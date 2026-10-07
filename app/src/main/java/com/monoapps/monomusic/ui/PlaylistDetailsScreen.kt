@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DownloadDone
+import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monoapps.monomusic.MonoMusicViewModel
+import com.monoapps.monomusic.offline.OfflineCollection
 import com.monoapps.monomusic.tidal.TidalTrack
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
@@ -38,6 +41,8 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
     val tracks = state.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
     var showMenu by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    val isPinned = viewModel.isPinned("playlist", playlist.uuid)
 
     when {
         state.isLoading -> CenteredMessage("Loading playlist…")
@@ -65,6 +70,19 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
                         }
                     }
                     Spacer(modifier = Modifier.weight(1f))
+                    if (tracks.isNotEmpty()) {
+                        IconButton(onClick = {
+                            if (isPinned) viewModel.unpinCollection("playlist", playlist.uuid)
+                            else showDownloadDialog = true
+                        }) {
+                            Icon(
+                                imageVector = if (isPinned) Icons.Outlined.DownloadDone
+                                else Icons.Outlined.DownloadForOffline,
+                                contentDescription = if (isPinned) "Remove offline copy"
+                                else "Keep offline",
+                            )
+                        }
+                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
@@ -110,6 +128,7 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
                 TrackRow(
                     track = track,
                     isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
+                    isDownloaded = track.id in viewModel.offlineTrackIds,
                     onClick = { viewModel.playTracks(tracks, index) },
                     menuEntries = listOf(
                         RowMenuEntry(
@@ -124,6 +143,26 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
                 )
             }
         }
+    }
+
+    if (showDownloadDialog) {
+        DownloadQualityDialog(
+            totalSeconds = tracks.sumOf { it.durationSec.toLong() },
+            onPick = { quality ->
+                viewModel.pinCollection(
+                    OfflineCollection(
+                        type = "playlist",
+                        id = playlist.uuid,
+                        title = playlist.title,
+                        subtitle = playlist.creator?.let { "By $it" },
+                        quality = quality,
+                        tracks = tracks,
+                    )
+                )
+                showDownloadDialog = false
+            },
+            onDismiss = { showDownloadDialog = false },
+        )
     }
 
     pickerTrack?.let { track ->

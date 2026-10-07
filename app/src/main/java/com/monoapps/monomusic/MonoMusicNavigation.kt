@@ -3,6 +3,7 @@ package com.monoapps.monomusic
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Search
@@ -20,6 +21,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Search : Screen("search", "Search", Icons.Outlined.Search)
     object NowPlaying : Screen("nowPlaying", "Now Playing", Icons.AutoMirrored.Outlined.QueueMusic)
     object Settings : Screen("settings", "Settings", Icons.Outlined.Settings)
+    object Downloads : Screen("downloads", "Downloads", Icons.Outlined.Download)
 }
 
 val navItems = listOf(

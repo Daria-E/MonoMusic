@@ -43,6 +43,7 @@ fun SongsScreen(viewModel: MonoMusicViewModel) {
                     TrackRow(
                         track = track,
                         isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
+                        isDownloaded = track.id in viewModel.offlineTrackIds,
                         onClick = { viewModel.playTracks(tracks, index) },
                         menuEntries = listOf(
                             RowMenuEntry("Add to playlist") { pickerTrack = track },

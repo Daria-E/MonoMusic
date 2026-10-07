@@ -226,9 +226,12 @@ class TidalClient(
      * not include, so step down from the selected quality until one works;
      * the delivered quality is reported in the result either way.
      */
-    suspend fun streamInfo(trackId: Long): TidalStreamInfo {
+    suspend fun streamInfo(
+        trackId: Long,
+        preferredQuality: AudioQuality = session.audioQuality,
+    ): TidalStreamInfo {
         val fallbackChain = AudioQuality.entries
-            .filter { it.ordinal <= session.audioQuality.ordinal }
+            .filter { it.ordinal <= preferredQuality.ordinal }
             .sortedByDescending { it.ordinal }
         var lastError: TidalApiException? = null
         for (quality in fallbackChain) {

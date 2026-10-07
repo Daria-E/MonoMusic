@@ -51,6 +51,7 @@ import com.monoapps.monomusic.ui.AlbumDetailsScreen
 import com.monoapps.monomusic.ui.AlbumsScreen
 import com.monoapps.monomusic.ui.ArtistDetailsScreen
 import com.monoapps.monomusic.ui.ArtistsScreen
+import com.monoapps.monomusic.ui.DownloadsScreen
 import com.monoapps.monomusic.ui.LoginScreen
 import com.monoapps.monomusic.ui.NowPlayingScreen
 import com.monoapps.monomusic.ui.PlaylistDetailsScreen
@@ -226,7 +227,13 @@ private fun MonoMusicNavHost(
             NowPlayingScreen(viewModel)
         }
         composable(Screen.Settings.route) {
-            SettingsScreen(viewModel)
+            SettingsScreen(
+                viewModel,
+                onOpenDownloads = { navController.navigate(Screen.Downloads.route) },
+            )
+        }
+        composable(Screen.Downloads.route) {
+            DownloadsScreen(viewModel)
         }
     }
 }
@@ -315,6 +322,7 @@ private fun MonoMusicTopBar(
                         Screen.Albums.route -> "Albums"
                         Screen.NowPlaying.route -> "Now Playing"
                         Screen.Settings.route -> "Settings"
+                        Screen.Downloads.route -> "Downloads"
                         else -> "MonoMusic"
                     }
                 )

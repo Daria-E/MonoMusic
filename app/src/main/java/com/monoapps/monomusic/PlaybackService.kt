@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.C
@@ -131,7 +132,23 @@ class PlaybackService : MediaSessionService() {
             .setUpstreamDataSourceFactory(resolvingFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
-        return DefaultDataSource.Factory(this, networkAndCacheStack)
+        // Routes file:// (pinned downloads) to a local reader and everything
+        // else into the cache + network stack.
+        val localAwareFactory = DefaultDataSource.Factory(this, networkAndCacheStack)
+
+        // Outermost: pinned tracks swap to their local file before any
+        // caching or network is involved, so they play fully offline.
+        return ResolvingDataSource.Factory(localAwareFactory) { dataSpec ->
+            val trackId = dataSpec.uri.takeIf { it.scheme == "tidal" }
+                ?.lastPathSegment?.toLongOrNull()
+                ?: return@Factory dataSpec
+            val file = app.offlineManager.fileFor(trackId) ?: return@Factory dataSpec
+            app.offlineManager.qualityFor(trackId)?.let { quality ->
+                app.resolvedQualities.value =
+                    app.resolvedQualities.value + (trackId to "${quality.name} (offline)")
+            }
+            dataSpec.withUri(Uri.fromFile(file))
+        }
     }
 
     private fun createNotificationChannel() {

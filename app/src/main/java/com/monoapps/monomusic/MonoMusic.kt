@@ -5,6 +5,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import com.monoapps.monomusic.offline.OfflineManager
 import com.monoapps.monomusic.tidal.TidalAuth
 import com.monoapps.monomusic.tidal.TidalClient
 import com.monoapps.monomusic.tidal.TidalSession
@@ -19,6 +20,9 @@ class MonoMusic : Application() {
     val tidalSession: TidalSession by lazy { TidalSession(this) }
     val tidalAuth: TidalAuth by lazy { TidalAuth(tidalSession, httpClient) }
     val tidalClient: TidalClient by lazy { TidalClient(tidalSession, tidalAuth, httpClient) }
+    val offlineManager: OfflineManager by lazy {
+        OfflineManager(this, tidalClient, tidalSession, httpClient)
+    }
 
     /**
      * Quality Tidal actually delivered, per track id (e.g. "LOSSLESS").

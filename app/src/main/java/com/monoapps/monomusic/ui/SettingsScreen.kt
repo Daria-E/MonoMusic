@@ -20,13 +20,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monoapps.monomusic.MonoMusicViewModel
+import com.monoapps.monomusic.offline.OfflineManager
 import com.monoapps.monomusic.tidal.AudioQuality
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
 
 @Composable
-fun SettingsScreen(viewModel: MonoMusicViewModel) {
+fun SettingsScreen(viewModel: MonoMusicViewModel, onOpenDownloads: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -57,6 +58,24 @@ fun SettingsScreen(viewModel: MonoMusicViewModel) {
         TextMMD(
             text = "Takes effect from the next song. Higher quality uses more data.",
             fontSize = 13.sp,
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+        DashedDivider(thickness = 1.dp)
+        Spacer(modifier = Modifier.height(24.dp))
+
+        TextMMD(text = "Downloads", fontSize = 22.sp, fontWeight = FontWeight.Black)
+        Spacer(modifier = Modifier.height(8.dp))
+        TwoLineRow(
+            title = "Kept offline",
+            subtitle = buildString {
+                val count = viewModel.offlineTrackIds.size
+                append(if (count == 1) "1 song" else "$count songs")
+                append(" • ${OfflineManager.formatBytes(viewModel.downloadsSizeBytes())}")
+                append(if (viewModel.downloadsOnSdCard) " • SD card" else " • phone storage")
+            },
+            onClick = onOpenDownloads,
+            showDivider = false,
         )
 
         Spacer(modifier = Modifier.height(24.dp))

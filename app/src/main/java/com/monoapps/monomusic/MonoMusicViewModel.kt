@@ -13,6 +13,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.monoapps.monomusic.offline.OfflineCollection
 import com.monoapps.monomusic.tidal.AudioQuality
 import com.monoapps.monomusic.tidal.TidalAuthException
 import com.monoapps.monomusic.tidal.TidalAlbum
@@ -128,6 +129,30 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
 
     val sessionCountry: String? get() = session.countryCode
 
+    // ---- offline ----
+
+    var offlineCollections by mutableStateOf(emptyList<OfflineCollection>())
+        private set
+    var offlineTrackIds by mutableStateOf(emptySet<Long>())
+        private set
+    var offlinePendingCount by mutableStateOf(0)
+        private set
+
+    val downloadsOnSdCard: Boolean get() = app.offlineManager.onRemovableStorage
+    fun downloadsSizeBytes(): Long = app.offlineManager.sizeBytes()
+
+    fun isPinned(type: String, id: String): Boolean =
+        offlineCollections.any { it.key == "$type:$id" }
+
+    fun pinCollection(collection: OfflineCollection) {
+        app.offlineManager.pin(collection)
+        uiMessage = "Downloading ${collection.title}"
+    }
+
+    fun unpinCollection(type: String, id: String) = app.offlineManager.unpin(type, id)
+
+    fun removeAllDownloads() = app.offlineManager.removeAll()
+
     private var loginJob: Job? = null
 
     private val playerListener = object : Player.Listener {
@@ -176,6 +201,15 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             app.resolvedQualities.collect { resolvedQualities = it }
         }
+        viewModelScope.launch {
+            app.offlineManager.collections.collect { offlineCollections = it }
+        }
+        viewModelScope.launch {
+            app.offlineManager.downloadedTrackIds.collect { offlineTrackIds = it }
+        }
+        viewModelScope.launch {
+            app.offlineManager.pendingCount.collect { offlinePendingCount = it }
+        }
 
         if (session.isLoggedIn) {
             viewModelScope.launch {
@@ -201,6 +235,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                 client.loadSessionInfo()
                 authState = AuthState.LoggedIn
                 loadLibrary()
+                app.offlineManager.ensureDownloads()
             } catch (e: Exception) {
                 authState = AuthState.LoggedOut
                 loginError = e.message ?: "Login failed"

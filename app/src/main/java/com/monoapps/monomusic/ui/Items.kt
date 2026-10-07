@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -61,6 +62,7 @@ fun TrackRow(
     isCurrentlyPlaying: Boolean,
     onClick: () -> Unit,
     showTrackNumber: Boolean = false,
+    isDownloaded: Boolean = false,
     menuEntries: List<RowMenuEntry> = emptyList(),
     showDivider: Boolean = true,
 ) {
@@ -121,13 +123,23 @@ fun TrackRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                TextMMD(
-                    text = subtitle,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isDownloaded) {
+                        Icon(
+                            imageVector = Icons.Outlined.DownloadDone,
+                            contentDescription = "Available offline",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    TextMMD(
+                        text = subtitle,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
 
             if (showMenu) {

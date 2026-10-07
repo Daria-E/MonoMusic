@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.DownloadDone
+import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monoapps.monomusic.MonoMusicViewModel
+import com.monoapps.monomusic.offline.OfflineCollection
 import com.monoapps.monomusic.tidal.TidalTrack
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
@@ -35,7 +38,9 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
     val state = viewModel.albumTracks
     val tracks = state.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
     val isFavorite = album.id in viewModel.favoriteAlbumIds
+    val isPinned = viewModel.isPinned("album", album.id.toString())
 
     when {
         state.isLoading -> CenteredMessage("Loading album…")
@@ -63,6 +68,17 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
                         TextMMD(text = "Shuffle")
                     }
                     Spacer(modifier = Modifier.weight(1f))
+                    IconButton(onClick = {
+                        if (isPinned) viewModel.unpinCollection("album", album.id.toString())
+                        else showDownloadDialog = true
+                    }) {
+                        Icon(
+                            imageVector = if (isPinned) Icons.Outlined.DownloadDone
+                            else Icons.Outlined.DownloadForOffline,
+                            contentDescription = if (isPinned) "Remove offline copy"
+                            else "Keep offline",
+                        )
+                    }
                     IconButton(onClick = { viewModel.toggleFavoriteAlbum(album) }) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Filled.Favorite
@@ -85,6 +101,7 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
                 TrackRow(
                     track = track,
                     isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
+                    isDownloaded = track.id in viewModel.offlineTrackIds,
                     onClick = { viewModel.playTracks(tracks, index) },
                     showTrackNumber = true,
                     menuEntries = listOf(
@@ -97,6 +114,26 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
                 )
             }
         }
+    }
+
+    if (showDownloadDialog) {
+        DownloadQualityDialog(
+            totalSeconds = tracks.sumOf { it.durationSec.toLong() },
+            onPick = { quality ->
+                viewModel.pinCollection(
+                    OfflineCollection(
+                        type = "album",
+                        id = album.id.toString(),
+                        title = album.title,
+                        subtitle = album.artistName.takeIf { it.isNotBlank() },
+                        quality = quality,
+                        tracks = tracks,
+                    )
+                )
+                showDownloadDialog = false
+            },
+            onDismiss = { showDownloadDialog = false },
+        )
     }
 
     pickerTrack?.let { track ->
