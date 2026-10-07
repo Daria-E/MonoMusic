@@ -1,125 +1,93 @@
 package com.calmapps.calmmusic.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.calmapps.calmmusic.MonoMusicViewModel
+import com.calmapps.calmmusic.tidal.TidalPlaylist
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
-import com.mudita.mmd.components.buttons.FloatingActionButtonMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.text.TextMMD
-
-data class PlaylistUiModel(
-    val id: String,
-    val name: String,
-    val description: String?,
-    val songCount: Int? = null,
-)
+import com.mudita.mmd.components.text_field.TextFieldMMD
 
 @Composable
-fun PlaylistsScreen(
-    playlists: List<PlaylistUiModel>,
-    isInEditMode: Boolean,
-    onPlaylistClick: (PlaylistUiModel) -> Unit,
-    onAddPlaylistClick: () -> Unit,
-    onSelectionChanged: (Set<String>) -> Unit,
-) {
-    val selectedState = remember { mutableStateMapOf<String, Boolean>() }
+fun PlaylistsScreen(viewModel: MonoMusicViewModel, onOpenPlaylist: (TidalPlaylist) -> Unit) {
+    val state = viewModel.playlists
+    val playlists = state.data.orEmpty()
+    var showCreateDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isInEditMode) {
-        if (!isInEditMode && selectedState.isNotEmpty()) {
-            selectedState.clear()
-            onSelectionChanged(emptySet())
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            state.data == null && state.isLoading -> CenteredMessage("Loading playlists…")
+
+            state.data == null && state.error != null ->
+                CenteredError(state.error) { viewModel.loadPlaylists() }
+
+            playlists.isEmpty() -> CenteredMessage(
+                "No playlists yet.\n\nCreate one with the button below."
+            )
+
+            else -> LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
+                itemsIndexed(playlists, key = { _, playlist -> playlist.uuid }) { index, playlist ->
+                    PlaylistRow(
+                        playlist = playlist,
+                        onClick = { onOpenPlaylist(playlist) },
+                        showDivider = index != playlists.lastIndex,
+                    )
+                }
+            }
+        }
+
+        OutlinedCircleButton(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            onClick = { showCreateDialog = true },
+        ) {
+            Icon(imageVector = Icons.Outlined.Add, contentDescription = "New playlist")
         }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        if (playlists.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    TextMMD(
-                        text = "No playlists in your library yet",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButtonMMD(
-                        onClick = onAddPlaylistClick,
-                    ) {
-                        TextMMD(text = "Add playlist")
-                    }
+    if (showCreateDialog) {
+        var name by remember { mutableStateOf("") }
+        MonoDialog(title = "New playlist", onDismissRequest = { showCreateDialog = false }) {
+            TextFieldMMD(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = { TextMMD(text = "Name") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(modifier = Modifier.padding(top = 16.dp))
+            Row(modifier = Modifier.align(Alignment.End)) {
+                OutlinedButtonMMD(onClick = { showCreateDialog = false }) {
+                    TextMMD(text = "Cancel")
                 }
-            }
-        } else {
-            val lastPlaylistId = playlists.lastOrNull()?.id
-            LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
-                items(
-                    items = playlists,
-                    key = { it.id },
-                ) { playlist ->
-                    val isSelected = selectedState[playlist.id] == true
-                    if (isInEditMode) {
-                        SelectablePlaylistItem(
-                            playlist = playlist,
-                            isSelected = isSelected,
-                            onSelectionChange = { nowSelected ->
-                                if (nowSelected) {
-                                    selectedState[playlist.id] = true
-                                } else {
-                                    selectedState.remove(playlist.id)
-                                }
-                                val currentSelectedIds = selectedState.filterValues { it }.keys
-                                onSelectionChanged(currentSelectedIds)
-                            },
-                            showDivider = playlist.id != lastPlaylistId,
-                        )
-                    } else {
-                        PlaylistItem(
-                            playlist = playlist,
-                            onClick = { onPlaylistClick(playlist) },
-                            showDivider = playlist.id != lastPlaylistId,
-                        )
+                Spacer(modifier = Modifier.width(12.dp))
+                OutlinedButtonMMD(onClick = {
+                    if (name.isNotBlank()) {
+                        viewModel.createPlaylist(name.trim())
+                        showCreateDialog = false
                     }
+                }) {
+                    TextMMD(text = "Create")
                 }
-            }
-        }
-
-        if (playlists.isNotEmpty() && !isInEditMode) {
-            FloatingActionButtonMMD(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                onClick = onAddPlaylistClick,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "New playlist",
-                )
             }
         }
     }

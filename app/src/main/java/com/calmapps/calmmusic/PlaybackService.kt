@@ -8,8 +8,7 @@ import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.C
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -22,14 +21,15 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import okhttp3.ConnectionPool
-import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 
 /**
- * Media3-based playback service.
+ * Media3 playback service. Queue items carry tidal://track/<id> URIs; the
+ * resolving data source swaps in a fresh signed stream URL at load time
+ * (Tidal stream URLs expire, so they are never resolved up front).
  */
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
@@ -37,15 +37,6 @@ class PlaybackService : MediaSessionService() {
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "calmmusic_playback_channel"
-        private var errorCallback: ((PlaybackException) -> Unit)? = null
-
-        private const val NEWPIPE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
-
-        private const val BYPASS_COOKIES = "SOCS=CAI; VISITOR_INFO1_LIVE=i7Sm6Qgj0lE; CONSENT=YES+cb.20210328-17-p0.en+FX+475"
-
-        fun registerErrorCallback(callback: ((PlaybackException) -> Unit)?) {
-            errorCallback = callback
-        }
     }
 
     @OptIn(UnstableApi::class)
@@ -54,19 +45,12 @@ class PlaybackService : MediaSessionService() {
         createNotificationChannel()
 
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                30_000,
-                120_000,
-                500,
-                1000
-            )
+            .setBufferDurationsMs(30_000, 120_000, 500, 1000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(createDataSourceFactory())
-
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSourceFactory)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(createDataSourceFactory()))
             .setLoadControl(loadControl)
             .build()
 
@@ -75,15 +59,7 @@ class PlaybackService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
         player.setAudioAttributes(audioAttributes, true)
-
         player.setHandleAudioBecomingNoisy(true)
-
-        player.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                errorCallback?.invoke(error)
-                super.onPlayerError(error)
-            }
-        })
 
         val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -95,15 +71,30 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        // Controllers can't send URIs across the binder, so rebuild the
+        // tidal:// URI from the media id when items arrive.
+        val callback = object : MediaSession.Callback {
+            override fun onAddMediaItems(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                mediaItems: MutableList<MediaItem>,
+            ): ListenableFuture<MutableList<MediaItem>> {
+                val resolved = mediaItems.map { item ->
+                    item.buildUpon().setUri("tidal://track/${item.mediaId}").build()
+                }.toMutableList()
+                return Futures.immediateFuture(resolved)
+            }
+        }
+
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivityPendingIntent)
+            .setCallback(callback)
             .build()
 
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
             .setChannelId(CHANNEL_ID)
             .setNotificationId(NOTIFICATION_ID)
             .build()
-
         setMediaNotificationProvider(notificationProvider)
     }
 
@@ -111,54 +102,22 @@ class PlaybackService : MediaSessionService() {
     private fun createDataSourceFactory(): DataSource.Factory {
         val app = application as MonoMusic
 
-        val okHttpClient = OkHttpClient.Builder()
-            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build()
-
-        val upstreamFactory = OkHttpDataSource.Factory(okHttpClient)
-            .setUserAgent(NEWPIPE_USER_AGENT)
-            .setDefaultRequestProperties(mapOf(
-                "Cookie" to BYPASS_COOKIES,
-                "Referer" to "https://www.youtube.com/"
-            ))
+        val upstreamFactory = OkHttpDataSource.Factory(app.httpClient)
 
         val resolvingFactory = ResolvingDataSource.Factory(upstreamFactory) { dataSpec ->
-            val uri = dataSpec.uri
-            val scheme = uri.scheme
-            if (scheme == "content" || scheme == "file") {
-                return@Factory dataSpec
-            }
+            if (dataSpec.uri.scheme != "tidal") return@Factory dataSpec
 
-            val videoId = dataSpec.key
-                ?: uri.getQueryParameter("v")
-                ?: uri.lastPathSegment
+            val trackId = dataSpec.uri.lastPathSegment?.toLongOrNull()
                 ?: return@Factory dataSpec
-
-            val precache = app.youTubePrecacheManager
-            val now = System.currentTimeMillis()
-            val cached = precache.getCachedWithLabel(videoId, now)
-
-            if (cached != null) {
-                val (cachedUrl, cachedLabel) = cached
-                app.streamResolverLabel.value = cachedLabel
-                return@Factory dataSpec.withUri(cachedUrl.toUri())
+            val streamInfo = runBlocking(Dispatchers.IO) {
+                app.tidalClient.streamInfo(trackId)
             }
-
-            val (resolvedUrl, resolverLabel) = runBlocking(Dispatchers.IO) {
-                try {
-                    app.youTubeInnertubeClient.getBestAudioUrl(videoId) to "Innertube/Piped"
-                } catch (_: Exception) {
-                    app.youTubeStreamResolver.getBestAudioUrl(videoId) to "NewPipe"
-                }
-            }
-            precache.putUrl(videoId, resolvedUrl, resolverLabel, now)
-            app.streamResolverLabel.value = resolverLabel
-
-            dataSpec.withUri(resolvedUrl.toUri())
+            app.nowPlayingQuality.value = streamInfo.audioQuality
+            dataSpec.withUri(streamInfo.url.toUri())
         }
 
+        // Cache keyed on the stable tidal:// URI, so re-listens replay from
+        // disk even though the resolved signed URLs differ every time.
         val networkAndCacheStack = CacheDataSource.Factory()
             .setCache(app.mediaCache)
             .setUpstreamDataSourceFactory(resolvingFactory)
@@ -168,13 +127,12 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun createNotificationChannel() {
-        val name = "MonoMusic playback"
-        val descriptionText = "Music playback controls"
-        val importance = NotificationManager.IMPORTANCE_LOW
-        val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-            description = descriptionText
-        }
-        val notificationManager: NotificationManager =
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "MonoMusic playback",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply { description = "Music playback controls" }
+        val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
     }

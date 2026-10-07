@@ -1,25 +1,23 @@
 package com.calmapps.calmmusic.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Shuffle
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,183 +25,117 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.calmapps.calmmusic.MonoMusicViewModel
-import com.mudita.mmd.components.buttons.FloatingActionButtonMMD
+import com.calmapps.calmmusic.tidal.TidalAlbum
+import com.calmapps.calmmusic.tidal.TidalTrack
+import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
-import com.mudita.mmd.components.tabs.PrimaryTabRowMMD
-import com.mudita.mmd.components.tabs.TabMMD
 import com.mudita.mmd.components.text.TextMMD
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtistDetailsScreen(
-    artistId: String?,
     viewModel: MonoMusicViewModel,
-    onPlaySongClick: (SongUiModel, List<SongUiModel>) -> Unit,
-    onAlbumClick: (AlbumUiModel) -> Unit,
-    onShuffleSongsClick: (List<SongUiModel>) -> Unit,
-    onAddToPlaylistClick: (SongUiModel) -> Unit,
-    onRemoveFromLibraryClick: (SongUiModel) -> Unit,
-    onDeleteClick: (SongUiModel) -> Unit,
+    onOpenAlbum: (TidalAlbum) -> Unit,
 ) {
-    var songs by remember { mutableStateOf<List<SongUiModel>>(emptyList()) }
-    var albums by remember { mutableStateOf<List<AlbumUiModel>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val artist = viewModel.selectedArtist ?: return
+    val topTracksState = viewModel.artistTopTracks
+    val albumsState = viewModel.artistAlbums
+    val topTracks = topTracksState.data.orEmpty()
+    val albums = albumsState.data.orEmpty()
+    var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
+    val isFavorite = artist.id in viewModel.favoriteArtistIds
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    val tabOptions = listOf("Albums", "Songs")
+    if (topTracksState.isLoading && albumsState.isLoading) {
+        CenteredMessage("Loading artist…")
+        return
+    }
 
-    val playbackState by viewModel.playbackState.collectAsState()
-    val currentSongId = playbackState.currentSongId
-
-    val refreshTrigger by viewModel.libraryRefreshTrigger.collectAsState()
-
-    LaunchedEffect(artistId, refreshTrigger) {
-        if (artistId == null) {
-            isLoading = false
-            return@LaunchedEffect
+    LazyColumnMMD(
+        contentPadding = PaddingValues(16.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (topTracks.isNotEmpty()) {
+                    OutlinedButtonMMD(onClick = { viewModel.playTracks(topTracks) }) {
+                        TextMMD(text = "Play top songs")
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                IconButton(onClick = { viewModel.toggleFavoriteArtist(artist) }) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Filled.Favorite
+                        else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remove artist from favorites"
+                        else "Add artist to favorites",
+                    )
+                }
+            }
         }
-        isLoading = true
-        errorMessage = null
-        try {
-            val content = viewModel.getArtistContent(artistId)
-            songs = content.songs
-            albums = content.albums
-            if (albums.isEmpty() && songs.isNotEmpty()) selectedTab = 1
-        } catch (e: Exception) {
-            errorMessage = e.message ?: "Failed to load artist"
-        } finally {
-            isLoading = false
+
+        if (topTracks.isNotEmpty()) {
+            item {
+                TextMMD(
+                    text = "Top Songs",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+            itemsIndexed(topTracks, key = { _, track -> "top-${track.id}" }) { index, track ->
+                val isTrackFavorite = track.id in viewModel.favoriteTrackIds
+                TrackRow(
+                    track = track,
+                    isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
+                    onClick = { viewModel.playTracks(topTracks, index) },
+                    menuEntries = listOf(
+                        RowMenuEntry(
+                            if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
+                        ) { viewModel.toggleFavoriteTrack(track) },
+                        RowMenuEntry("Add to playlist") { pickerTrack = track },
+                    ),
+                    showDivider = index != topTracks.lastIndex,
+                )
+            }
+        } else if (topTracksState.error != null) {
+            item { TextMMD(text = topTracksState.error, fontSize = 14.sp) }
+        }
+
+        if (albums.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+                TextMMD(
+                    text = "Albums",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+            itemsIndexed(albums, key = { _, album -> "album-${album.id}" }) { index, album ->
+                AlbumRow(
+                    album = album,
+                    onClick = { onOpenAlbum(album) },
+                    showDivider = index != albums.lastIndex,
+                )
+            }
+        } else if (albumsState.error != null) {
+            item { TextMMD(text = albumsState.error, fontSize = 14.sp) }
         }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        when {
-            isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TextMMD(text = "Loading artist...")
-                }
-            }
-
-            errorMessage != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        TextMMD(text = "Error loading artist")
-                        TextMMD(text = errorMessage!!)
-                    }
-                }
-            }
-
-            songs.isEmpty() && albums.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TextMMD(text = "No content for this artist yet")
-                }
-            }
-
-            else -> {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    PrimaryTabRowMMD(selectedTabIndex = selectedTab) {
-                        tabOptions.forEachIndexed { index, title ->
-                            TabMMD(
-                                selected = selectedTab == index,
-                                onClick = { selectedTab = index },
-                                text = {
-                                    TextMMD(
-                                        text = title,
-                                        fontSize = 16.sp,
-                                        fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                                    )
-                                },
-                            )
-                        }
-                    }
-
-                    if (selectedTab == 0) {
-                        // Albums tab
-                        LazyColumnMMD(
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.Top,
-                        ) {
-                            if (albums.isNotEmpty()) {
-                                items(albums) { album ->
-                                    AlbumItem(
-                                        album = album,
-                                        onClick = { onAlbumClick(album) },
-                                        showDivider = album != albums.lastOrNull(),
-                                    )
-                                }
-                            } else {
-                                item {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .height(200.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        TextMMD(text = "No albums for this artist")
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        // Songs tab
-                        LazyColumnMMD(
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.Top,
-                        ) {
-                            if (songs.isNotEmpty()) {
-                                items(songs) { song ->
-                                    SongItem(
-                                        song = song,
-                                        isCurrentlyPlaying = song.id == currentSongId,
-                                        onClick = { onPlaySongClick(song, songs) },
-                                        onAddToPlaylist = { onAddToPlaylistClick(song) },
-                                        onRemoveFromLibrary = { onRemoveFromLibraryClick(song) },
-                                        onDelete = { onDeleteClick(song) },
-                                        showDivider = song != songs.lastOrNull(),
-                                    )
-                                }
-                            } else {
-                                item {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .height(200.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        TextMMD(text = "No songs for this artist")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!isLoading && errorMessage == null && songs.isNotEmpty()) {
-            FloatingActionButtonMMD(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                onClick = { onShuffleSongsClick(songs) },
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Shuffle,
-                    contentDescription = "Shuffle artist songs",
-                )
-            }
-        }
+    pickerTrack?.let { track ->
+        PlaylistPickerDialog(
+            playlists = viewModel.playlists.data.orEmpty(),
+            onPick = { playlist ->
+                viewModel.addToPlaylist(track, playlist)
+                pickerTrack = null
+            },
+            onDismiss = { pickerTrack = null },
+        )
     }
 }

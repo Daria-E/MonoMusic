@@ -1,135 +1,81 @@
 package com.calmapps.calmmusic.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.mudita.mmd.components.buttons.FloatingActionButtonMMD
+import com.calmapps.calmmusic.MonoMusicViewModel
+import com.calmapps.calmmusic.tidal.TidalTrack
 import com.mudita.mmd.components.lazy.LazyColumnMMD
-import com.mudita.mmd.components.text.TextMMD
 
-data class SongUiModel(
-    val id: String,
-    val title: String,
-    val artist: String,
-    val durationText: String? = null,
-    val durationMillis: Long? = null,
-    val discNumber: Int? = null,
-    val trackNumber: Int? = null,
-    val sourceType: String = "YOUTUBE",
-    val audioUri: String? = null,
-    val album: String? = null,
-)
-
+/** Favorite tracks on Tidal; the closest thing to the old "all songs" library. */
 @Composable
-fun SongsScreen(
-    songs: List<SongUiModel>,
-    isLoading: Boolean,
-    errorMessage: String?,
-    currentSongId: String?,
-    isSyncInProgress: Boolean,
-    onPlaySongClick: (SongUiModel) -> Unit,
-    onShuffleClick: () -> Unit,
-    onAddToPlaylistClick: (SongUiModel) -> Unit,
-    onRemoveFromLibraryClick: (SongUiModel) -> Unit,
-    onDeleteClick: (SongUiModel) -> Unit,
-    onEditClick: (SongUiModel) -> Unit,
-    onOpenStreamingSettingsClick: () -> Unit,
-    onOpenLocalSettingsClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
+fun SongsScreen(viewModel: MonoMusicViewModel) {
+    val state = viewModel.favoriteTracks
+    val tracks = state.data.orEmpty()
+    var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
         when {
-            isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TextMMD(text = "Loading songs...")
-                }
-            }
+            state.data == null && state.isLoading -> CenteredMessage("Loading songs…")
 
-            errorMessage != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        TextMMD(text = "Error loading songs")
-                        TextMMD(text = errorMessage)
-                    }
-                }
-            }
+            state.data == null && state.error != null ->
+                CenteredError(state.error) { viewModel.loadFavoriteTracks() }
 
-            songs.isEmpty() && isSyncInProgress -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TextMMD(text = "Music sync is in progress…")
-                }
-            }
+            tracks.isEmpty() -> CenteredMessage(
+                "No favorite songs yet.\n\nSearch Tidal and long-press a song to add it to your favorites."
+            )
 
-            songs.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    LibraryOnboardingEmptyState(
-                        title = "No songs yet",
-                        body = "Download songs from YouTube Music or choose local folders in Settings to start building your library.",
-                        onOpenStreamingSettingsClick = onOpenStreamingSettingsClick,
-                        onOpenLocalSettingsClick = onOpenLocalSettingsClick,
+            else -> LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
+                itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
+                    TrackRow(
+                        track = track,
+                        isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
+                        onClick = { viewModel.playTracks(tracks, index) },
+                        menuEntries = listOf(
+                            RowMenuEntry("Add to playlist") { pickerTrack = track },
+                            RowMenuEntry("Remove from favorites") {
+                                viewModel.toggleFavoriteTrack(track)
+                            },
+                        ),
+                        showDivider = index != tracks.lastIndex,
                     )
                 }
             }
-
-            else -> {
-                LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
-                    items(
-                        items = songs,
-                        key = { it.id },
-                    ) { song ->
-                        val isLast = song.id == songs.lastOrNull()?.id
-                        SongItem(
-                            song = song,
-                            isCurrentlyPlaying = song.id == currentSongId,
-                            onClick = { onPlaySongClick(song) },
-                            onAddToPlaylist = { onAddToPlaylistClick(song) },
-                            onRemoveFromLibrary = { onRemoveFromLibraryClick(song) },
-                            onDelete = { onDeleteClick(song) },
-                            onEdit = { onEditClick(song) },
-                            isDownloaded = false,
-                            isInLibrary = true,
-                            showDivider = !isLast,
-                        )
-                    }
-                }
-            }
         }
 
-        if (!isLoading && errorMessage == null && songs.isNotEmpty()) {
-            FloatingActionButtonMMD(
+        if (tracks.isNotEmpty()) {
+            OutlinedCircleButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                onClick = onShuffleClick,
+                onClick = { viewModel.playTracks(tracks, shuffled = true) },
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Shuffle,
-                    contentDescription = "Shuffle songs",
-                )
+                Icon(imageVector = Icons.Outlined.Shuffle, contentDescription = "Shuffle songs")
             }
         }
+    }
+
+    pickerTrack?.let { track ->
+        PlaylistPickerDialog(
+            playlists = viewModel.playlists.data.orEmpty(),
+            onPick = { playlist ->
+                viewModel.addToPlaylist(track, playlist)
+                pickerTrack = null
+            },
+            onDismiss = { pickerTrack = null },
+        )
     }
 }

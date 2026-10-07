@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     kotlin("android")
-    id("com.google.devtools.ksp") version "1.9.20-1.0.13"
 }
 
 android {
@@ -10,11 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.calmapps.calmmusic"
-        // MediaStore RELATIVE_PATH/IS_PENDING (download storage) need API 29.
         minSdk = 29
         targetSdk = 35
-        versionCode = 18
-        versionName = "2.0.2"
+        versionCode = 19
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -34,7 +32,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
-        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -47,7 +44,6 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 
     composeOptions {
@@ -65,16 +61,14 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("androidx.media3:media3-datasource-okhttp:1.2.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.2.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.0")
     implementation("androidx.navigation:navigation-compose:2.7.4")
@@ -82,35 +76,12 @@ dependencies {
     // Mudita Mindful Design Framework
     implementation("com.mudita:MMD:1.0.0")
 
-    // Room database for songs
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-
-    // SAF helper for working with picked folders
-    implementation("androidx.documentfile:documentfile:1.0.1")
-
-    // Media3 (ExoPlayer) for local file playback
+    // Media3 (ExoPlayer) for streaming playback
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-session:1.3.1")
-    implementation("androidx.media3:media3-ui:1.3.1")
-
-    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
-
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
+    implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
 
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(composeBom)
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
-
-    // meta tag library
-    implementation("net.jthink:jaudiotagger:3.0.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+    // Real org.json for JVM unit tests (the Android SDK one is a stub there)
+    testImplementation("org.json:json:20240303")
 }
