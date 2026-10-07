@@ -221,15 +221,37 @@ class TidalClient(
      * Resolves a track to a direct stream URL via playbackinfopostpaywall.
      * The device-flow client returns a BTS manifest (a JSON wrapper around a
      * signed direct URL) for every quality it can deliver.
+     *
+     * Tidal rejects qualities the subscription (or this client tier) does
+     * not include, so step down from the selected quality until one works;
+     * the delivered quality is reported in the result either way.
      */
     suspend fun streamInfo(trackId: Long): TidalStreamInfo {
+        val fallbackChain = AudioQuality.entries
+            .filter { it.ordinal <= session.audioQuality.ordinal }
+            .sortedByDescending { it.ordinal }
+        var lastError: TidalApiException? = null
+        for (quality in fallbackChain) {
+            try {
+                return streamInfoAt(trackId, quality)
+            } catch (e: TidalApiException) {
+                // 4xx (except rate limiting) means "not allowed at this
+                // quality"; anything else is a real failure.
+                if (e.httpCode !in 400..403) throw e
+                lastError = e
+            }
+        }
+        throw lastError ?: TidalApiException(0, "Could not resolve stream")
+    }
+
+    private suspend fun streamInfoAt(trackId: Long, quality: AudioQuality): TidalStreamInfo {
         val json = request {
             get(
                 url(
                     API_V1 + "tracks/$trackId/playbackinfopostpaywall",
                     "playbackmode" to "STREAM",
                     "assetpresentation" to "FULL",
-                    "audioquality" to session.audioQuality.name,
+                    "audioquality" to quality.name,
                 )
             )
         }.asJson()
@@ -239,7 +261,7 @@ class TidalClient(
         }
         return TidalJson.parseBtsManifest(
             manifestJson = String(Base64.decode(json.getString("manifest"), Base64.DEFAULT)),
-            deliveredQuality = json.optString("audioQuality", session.audioQuality.name),
+            deliveredQuality = json.optString("audioQuality", quality.name),
         )
     }
 
