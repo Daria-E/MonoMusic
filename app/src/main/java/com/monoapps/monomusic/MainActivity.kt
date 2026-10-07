@@ -10,9 +10,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Headphones
@@ -26,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -135,7 +140,14 @@ private fun MainApp(viewModel: MonoMusicViewModel) {
                 onNavigate = { route -> navController.navigateToTab(route) },
             )
         },
-        snackbarHost = { SnackbarHostMMD(hostState = snackbarHostState) },
+        snackbarHost = {
+            // MMD's snackbar surface is translucent; on e-ink the content
+            // shimmering through reads as gray. Back it with solid white.
+            SnackbarHostMMD(
+                hostState = snackbarHostState,
+                modifier = Modifier.background(Color.White),
+            )
+        },
     ) { padding ->
         MonoMusicNavHost(
             viewModel = viewModel,
@@ -320,11 +332,17 @@ private fun MonoMusicTopBar(
                 }
             }
             if (viewModel.hasNowPlaying && route != Screen.NowPlaying.route) {
-                IconButton(onClick = onOpenNowPlaying) {
-                    Icon(
-                        imageVector = Icons.Outlined.Headphones,
-                        contentDescription = "Now Playing",
-                    )
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .border(2.dp, Color.Black, CircleShape),
+                ) {
+                    IconButton(onClick = onOpenNowPlaying) {
+                        Icon(
+                            imageVector = Icons.Outlined.Headphones,
+                            contentDescription = "Now Playing",
+                        )
+                    }
                 }
             }
         },
