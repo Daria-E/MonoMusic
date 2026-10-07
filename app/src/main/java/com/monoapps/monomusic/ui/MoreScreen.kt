@@ -16,16 +16,6 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
             .padding(16.dp),
     ) {
         TwoLineRow(
-            title = "Search",
-            subtitle = "Find songs, albums, artists and playlists on Tidal",
-            onClick = { onNavigate(Screen.Search.route) },
-        )
-        TwoLineRow(
-            title = "Now Playing",
-            subtitle = "The current song and queue controls",
-            onClick = { onNavigate(Screen.NowPlaying.route) },
-        )
-        TwoLineRow(
             title = "Settings",
             subtitle = "Streaming quality and account",
             onClick = { onNavigate(Screen.Settings.route) },
