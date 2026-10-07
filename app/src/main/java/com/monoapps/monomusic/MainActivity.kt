@@ -329,7 +329,7 @@ private fun MonoMusicTopBar(
             if (viewModel.hasNowPlaying && route != Screen.NowPlaying.route) {
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 4.dp)
+                        .padding(start = 4.dp, end = 12.dp)
                         .border(2.dp, Color.Black, RoundedCornerShape(12.dp)),
                 ) {
                     IconButton(onClick = onOpenNowPlaying) {
