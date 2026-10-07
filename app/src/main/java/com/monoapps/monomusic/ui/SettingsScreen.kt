@@ -3,6 +3,7 @@ package com.monoapps.monomusic.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -23,17 +22,17 @@ import com.monoapps.monomusic.MonoMusicViewModel
 import com.monoapps.monomusic.offline.OfflineManager
 import com.monoapps.monomusic.tidal.AudioQuality
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
+import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
 
 @Composable
 fun SettingsScreen(viewModel: MonoMusicViewModel, onOpenDownloads: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+    LazyColumnMMD(
+        contentPadding = PaddingValues(16.dp),
+        modifier = Modifier.fillMaxSize(),
     ) {
+        item { Column {
         TextMMD(text = "Streaming quality", fontSize = 22.sp, fontWeight = FontWeight.Black)
         Spacer(modifier = Modifier.height(8.dp))
         AudioQuality.entries.forEach { quality ->
@@ -103,5 +102,6 @@ fun SettingsScreen(viewModel: MonoMusicViewModel, onOpenDownloads: () -> Unit) {
                 "Tidal subscription. Nothing is tracked; your login stays on this phone.",
             fontSize = 13.sp,
         )
+    } }
     }
 }

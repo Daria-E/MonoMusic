@@ -275,6 +275,20 @@ fun CenteredMessage(text: String) {
     }
 }
 
+/** Icon button with the app's rounded-square outline, for primary row actions. */
+@Composable
+fun BorderedIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(modifier = Modifier.border(2.dp, Color.Black, RoundedCornerShape(12.dp))) {
+        androidx.compose.material3.IconButton(onClick = onClick) {
+            Icon(imageVector = icon, contentDescription = contentDescription)
+        }
+    }
+}
+
 /** Outlined rounded-square action button (MMD's FAB is solid black, which infills). */
 @Composable
 fun OutlinedActionButton(

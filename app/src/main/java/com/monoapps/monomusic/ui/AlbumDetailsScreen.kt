@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.DownloadDone
 import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -28,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import com.monoapps.monomusic.MonoMusicViewModel
 import com.monoapps.monomusic.offline.OfflineCollection
 import com.monoapps.monomusic.tidal.TidalTrack
-import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.text.TextMMD
 
@@ -61,13 +62,17 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
                         .padding(bottom = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OutlinedButtonMMD(onClick = { viewModel.playTracks(tracks) }) {
-                        TextMMD(text = "Play")
-                    }
+                    BorderedIconButton(
+                        icon = Icons.Outlined.PlayArrow,
+                        contentDescription = "Play",
+                        onClick = { viewModel.playTracks(tracks) },
+                    )
                     Spacer(modifier = Modifier.width(12.dp))
-                    OutlinedButtonMMD(onClick = { viewModel.playTracks(tracks, shuffled = true) }) {
-                        TextMMD(text = "Shuffle")
-                    }
+                    BorderedIconButton(
+                        icon = Icons.Outlined.Shuffle,
+                        contentDescription = "Shuffle",
+                        onClick = { viewModel.playTracks(tracks, shuffled = true) },
+                    )
                     Spacer(modifier = Modifier.weight(1f))
                     IconButton(onClick = {
                         if (isPinned) viewModel.unpinCollection("album", album.id.toString())

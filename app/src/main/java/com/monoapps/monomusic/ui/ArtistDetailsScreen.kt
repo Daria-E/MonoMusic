@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -27,7 +29,6 @@ import androidx.compose.ui.unit.sp
 import com.monoapps.monomusic.MonoMusicViewModel
 import com.monoapps.monomusic.tidal.TidalAlbum
 import com.monoapps.monomusic.tidal.TidalTrack
-import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.text.TextMMD
 
@@ -62,9 +63,17 @@ fun ArtistDetailsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (topTracks.isNotEmpty()) {
-                    OutlinedButtonMMD(onClick = { viewModel.playTracks(topTracks) }) {
-                        TextMMD(text = "Play top songs")
-                    }
+                    BorderedIconButton(
+                        icon = Icons.Outlined.PlayArrow,
+                        contentDescription = "Play top songs",
+                        onClick = { viewModel.playTracks(topTracks) },
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    BorderedIconButton(
+                        icon = Icons.Outlined.Shuffle,
+                        contentDescription = "Shuffle top songs",
+                        onClick = { viewModel.playTracks(topTracks, shuffled = true) },
+                    )
                     Spacer(modifier = Modifier.width(12.dp))
                 }
                 Spacer(modifier = Modifier.weight(1f))
