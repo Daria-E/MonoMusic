@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.calmapps.calmmusic"
+    namespace = "com.monoapps.monomusic"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.calmapps.calmmusic"
+        applicationId = "com.monoapps.monomusic"
         minSdk = 29
         targetSdk = 35
         versionCode = 19
