@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Headphones
@@ -52,7 +52,6 @@ import com.monoapps.monomusic.ui.AlbumsScreen
 import com.monoapps.monomusic.ui.ArtistDetailsScreen
 import com.monoapps.monomusic.ui.ArtistsScreen
 import com.monoapps.monomusic.ui.LoginScreen
-import com.monoapps.monomusic.ui.MoreScreen
 import com.monoapps.monomusic.ui.NowPlayingScreen
 import com.monoapps.monomusic.ui.PlaylistDetailsScreen
 import com.monoapps.monomusic.ui.PlaylistsScreen
@@ -206,9 +205,6 @@ private fun MonoMusicNavHost(
         composable(Screen.Albums.route) {
             AlbumsScreen(viewModel, onOpenAlbum = openAlbum)
         }
-        composable(Screen.More.route) {
-            MoreScreen(onNavigate = { route -> navController.navigate(route) })
-        }
         composable(Screen.Search.route) {
             SearchScreen(
                 viewModel,
@@ -317,7 +313,6 @@ private fun MonoMusicTopBar(
                         Screen.Artists.route -> "Artists"
                         Screen.Songs.route -> "Songs"
                         Screen.Albums.route -> "Albums"
-                        Screen.More.route -> "More"
                         Screen.NowPlaying.route -> "Now Playing"
                         Screen.Settings.route -> "Settings"
                         else -> "MonoMusic"
@@ -326,7 +321,7 @@ private fun MonoMusicTopBar(
             }
         },
         actions = {
-            if (route in navRoutes && route != Screen.More.route) {
+            if (route in navRoutes && route != Screen.Settings.route) {
                 IconButton(onClick = onOpenSearch) {
                     Icon(imageVector = Icons.Outlined.Search, contentDescription = "Search")
                 }
@@ -335,7 +330,7 @@ private fun MonoMusicTopBar(
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 4.dp)
-                        .border(2.dp, Color.Black, CircleShape),
+                        .border(2.dp, Color.Black, RoundedCornerShape(12.dp)),
                 ) {
                     IconButton(onClick = onOpenNowPlaying) {
                         Icon(

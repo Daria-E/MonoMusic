@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -143,7 +143,7 @@ fun NowPlayingScreen(viewModel: MonoMusicViewModel) {
                 )
             }
             Spacer(modifier = Modifier.size(24.dp))
-            OutlinedCircleButton(size = 72.dp, onClick = { viewModel.playPause() }) {
+            OutlinedActionButton(size = 72.dp, onClick = { viewModel.playPause() }) {
                 Icon(
                     imageVector = if (viewModel.isPlaying) Icons.Outlined.Pause
                     else Icons.Outlined.PlayArrow,
@@ -210,7 +210,7 @@ private fun ToggleIconButton(
 ) {
     Box(
         modifier = if (active) {
-            Modifier.border(2.dp, Color.Black, CircleShape)
+            Modifier.border(2.dp, Color.Black, RoundedCornerShape(12.dp))
         } else {
             Modifier
         },

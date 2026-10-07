@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -263,9 +263,9 @@ fun CenteredMessage(text: String) {
     }
 }
 
-/** Outlined circular action button (MMD's FAB is solid black, which infills). */
+/** Outlined rounded-square action button (MMD's FAB is solid black, which infills). */
 @Composable
-fun OutlinedCircleButton(
+fun OutlinedActionButton(
     modifier: Modifier = Modifier,
     size: androidx.compose.ui.unit.Dp = 56.dp,
     onClick: () -> Unit,
@@ -274,9 +274,9 @@ fun OutlinedCircleButton(
     Box(
         modifier = modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(12.dp))
             .background(Color.White)
-            .border(2.dp, Color.Black, CircleShape)
+            .border(2.dp, Color.Black, RoundedCornerShape(12.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

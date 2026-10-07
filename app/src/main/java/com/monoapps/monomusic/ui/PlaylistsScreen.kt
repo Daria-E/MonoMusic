@@ -55,7 +55,7 @@ fun PlaylistsScreen(viewModel: MonoMusicViewModel, onOpenPlaylist: (TidalPlaylis
             }
         }
 
-        OutlinedCircleButton(
+        OutlinedActionButton(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),

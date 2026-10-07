@@ -57,7 +57,7 @@ fun SongsScreen(viewModel: MonoMusicViewModel) {
         }
 
         if (tracks.isNotEmpty()) {
-            OutlinedCircleButton(
+            OutlinedActionButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),

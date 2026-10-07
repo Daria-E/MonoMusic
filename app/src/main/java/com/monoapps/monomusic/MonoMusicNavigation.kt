@@ -4,7 +4,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -20,7 +19,6 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object AlbumDetails : Screen("albumDetails", "Album", Icons.Outlined.Album)
     object Search : Screen("search", "Search", Icons.Outlined.Search)
     object NowPlaying : Screen("nowPlaying", "Now Playing", Icons.AutoMirrored.Outlined.QueueMusic)
-    object More : Screen("more", "More", Icons.Outlined.MoreHoriz)
     object Settings : Screen("settings", "Settings", Icons.Outlined.Settings)
 }
 
@@ -29,5 +27,5 @@ val navItems = listOf(
     Screen.Artists,
     Screen.Songs,
     Screen.Albums,
-    Screen.More,
+    Screen.Settings,
 )
