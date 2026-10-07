@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -57,7 +58,6 @@ import com.monoapps.monomusic.tidal.TidalAlbum
 import com.monoapps.monomusic.tidal.TidalArtist
 import com.monoapps.monomusic.tidal.TidalPlaylist
 import com.mudita.mmd.ThemeMMD
-import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.nav_bar.NavigationBarItemMMD
 import com.mudita.mmd.components.nav_bar.NavigationBarMMD
 import com.mudita.mmd.components.search_bar.SearchBarDefaultsMMD
@@ -320,15 +320,10 @@ private fun MonoMusicTopBar(
                 }
             }
             if (viewModel.hasNowPlaying && route != Screen.NowPlaying.route) {
-                OutlinedButtonMMD(
-                    onClick = onOpenNowPlaying,
-                    contentPadding = PaddingValues(8.dp),
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                ) {
-                    TextMMD(
-                        text = "Now Playing",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                IconButton(onClick = onOpenNowPlaying) {
+                    Icon(
+                        imageVector = Icons.Outlined.Headphones,
+                        contentDescription = "Now Playing",
                     )
                 }
             }

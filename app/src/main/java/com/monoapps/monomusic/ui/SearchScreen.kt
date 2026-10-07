@@ -5,6 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,9 +27,14 @@ import com.monoapps.monomusic.tidal.TidalTrack
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.tabs.PrimaryTabRowMMD
 import com.mudita.mmd.components.tabs.TabMMD
-import com.mudita.mmd.components.text.TextMMD
 
-private val searchTabs = listOf("Songs", "Albums", "Artists", "Playlists")
+// Icon tabs: four text labels wrap mid-word on the 480px-wide screen.
+private val searchTabs = listOf(
+    "Songs" to Icons.AutoMirrored.Outlined.QueueMusic,
+    "Albums" to Icons.Outlined.Album,
+    "Artists" to Icons.Outlined.PersonOutline,
+    "Playlists" to Icons.Outlined.LibraryMusic,
+)
 
 @androidx.compose.runtime.Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -39,11 +50,11 @@ fun SearchScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         PrimaryTabRowMMD(selectedTabIndex = tab) {
-            searchTabs.forEachIndexed { index, title ->
+            searchTabs.forEachIndexed { index, (label, icon) ->
                 TabMMD(
                     selected = tab == index,
                     onClick = { tab = index },
-                    text = { TextMMD(text = title) },
+                    icon = { Icon(imageVector = icon, contentDescription = label) },
                 )
             }
         }
