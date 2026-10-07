@@ -6,6 +6,13 @@ import org.json.JSONObject
 /** Parsing of Tidal API JSON into models; separate from the client so it is unit-testable. */
 internal object TidalJson {
 
+    /**
+     * Null-safe string read. Android's org.json renders explicit JSON nulls
+     * as the literal string "null" from optString, so always check isNull.
+     */
+    private fun JSONObject.stringOrNull(key: String): String? =
+        if (isNull(key)) null else optString(key).takeIf { it.isNotEmpty() }
+
     fun JSONArray?.objects(): List<JSONObject> {
         if (this == null) return emptyList()
         return (0 until length()).mapNotNull { optJSONObject(it) }
@@ -18,16 +25,16 @@ internal object TidalJson {
         val album = o.optJSONObject("album")
         return TidalTrack(
             id = id,
-            title = o.optString("title"),
-            artistName = artist?.optString("name") ?: "",
+            title = o.stringOrNull("title") ?: "",
+            artistName = artist?.stringOrNull("name") ?: "",
             artistId = artist?.optLong("id")?.takeIf { it > 0 },
-            albumTitle = album?.optString("title")?.takeIf { it.isNotEmpty() },
+            albumTitle = album?.stringOrNull("title"),
             albumId = album?.optLong("id")?.takeIf { it > 0 },
             durationSec = o.optInt("duration"),
             trackNumber = o.optInt("trackNumber"),
             volumeNumber = o.optInt("volumeNumber", 1),
             explicit = o.optBoolean("explicit"),
-            audioQuality = o.optString("audioQuality").takeIf { it.isNotEmpty() },
+            audioQuality = o.stringOrNull("audioQuality"),
         )
     }
 
@@ -37,33 +44,33 @@ internal object TidalJson {
         val artist = o.optJSONObject("artist")
         return TidalAlbum(
             id = id,
-            title = o.optString("title"),
-            artistName = artist?.optString("name") ?: "",
+            title = o.stringOrNull("title") ?: "",
+            artistName = artist?.stringOrNull("name") ?: "",
             artistId = artist?.optLong("id")?.takeIf { it > 0 },
             numberOfTracks = o.optInt("numberOfTracks"),
-            releaseYear = o.optString("releaseDate").takeIf { it.length >= 4 }?.substring(0, 4),
-            audioQuality = o.optString("audioQuality").takeIf { it.isNotEmpty() },
+            releaseYear = o.stringOrNull("releaseDate")
+                ?.takeIf { it.length >= 4 }?.substring(0, 4),
+            audioQuality = o.stringOrNull("audioQuality"),
         )
     }
 
     fun parseArtist(o: JSONObject): TidalArtist? {
         val id = o.optLong("id", -1)
         if (id <= 0) return null
-        return TidalArtist(id = id, name = o.optString("name"))
+        return TidalArtist(id = id, name = o.stringOrNull("name") ?: "")
     }
 
     fun parsePlaylist(o: JSONObject): TidalPlaylist? {
-        val uuid = o.optString("uuid")
-        if (uuid.isEmpty()) return null
+        val uuid = o.stringOrNull("uuid") ?: return null
         val creator = when {
-            o.optString("type") == "EDITORIAL" -> "TIDAL"
-            else -> o.optJSONObject("creator")?.optString("name")?.takeIf { it.isNotEmpty() }
+            o.stringOrNull("type") == "EDITORIAL" -> "TIDAL"
+            else -> o.optJSONObject("creator")?.stringOrNull("name")
         }
         return TidalPlaylist(
             uuid = uuid,
-            title = o.optString("title"),
+            title = o.stringOrNull("title") ?: "",
             numberOfTracks = o.optInt("numberOfTracks"),
-            description = o.optString("description").takeIf { it.isNotEmpty() },
+            description = o.stringOrNull("description"),
             creator = creator,
         )
     }
@@ -71,7 +78,7 @@ internal object TidalJson {
     /** Decodes the JSON inside a BTS (vnd.tidal.bts) manifest into a stream info. */
     fun parseBtsManifest(manifestJson: String, deliveredQuality: String): TidalStreamInfo {
         val manifest = JSONObject(manifestJson)
-        if (manifest.optString("encryptionType", "NONE") != "NONE") {
+        if ((manifest.stringOrNull("encryptionType") ?: "NONE") != "NONE") {
             throw TidalApiException(0, "Encrypted streams are not supported")
         }
         val urls = manifest.optJSONArray("urls")
@@ -80,7 +87,7 @@ internal object TidalJson {
         }
         return TidalStreamInfo(
             url = urls.getString(0),
-            codec = manifest.optString("codecs").takeIf { it.isNotEmpty() },
+            codec = manifest.stringOrNull("codecs"),
             audioQuality = deliveredQuality,
         )
     }

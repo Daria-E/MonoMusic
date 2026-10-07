@@ -39,10 +39,10 @@ class TidalAuth(private val session: TidalSession, private val http: OkHttpClien
             .build()
         val request = Request.Builder().url("$AUTH_BASE/device_authorization").post(body).build()
         http.newCall(request).execute().use { response ->
-            val json = JSONObject(response.body?.string() ?: "{}")
             if (!response.isSuccessful) {
                 throw TidalAuthException("Could not start Tidal login (HTTP ${response.code})")
             }
+            val json = JSONObject(response.body?.string() ?: "{}")
             DeviceAuthorization(
                 deviceCode = json.getString("deviceCode"),
                 userCode = json.getString("userCode"),
@@ -59,15 +59,19 @@ class TidalAuth(private val session: TidalSession, private val http: OkHttpClien
      */
     suspend fun waitForLogin(authorization: DeviceAuthorization) {
         val deadline = System.currentTimeMillis() + authorization.expiresInSec * 1000L
+        var intervalSec = authorization.pollIntervalSec
         while (System.currentTimeMillis() < deadline) {
-            delay(authorization.pollIntervalSec * 1000L)
-            val json = postToken(
-                "client_id" to CLIENT_ID,
-                "client_secret" to CLIENT_SECRET,
-                "device_code" to authorization.deviceCode,
-                "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
-                "scope" to SCOPE,
-            )
+            delay(intervalSec * 1000L)
+            // A dropped connection mid-poll should not abort the login.
+            val json = runCatching {
+                postToken(
+                    "client_id" to CLIENT_ID,
+                    "client_secret" to CLIENT_SECRET,
+                    "device_code" to authorization.deviceCode,
+                    "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
+                    "scope" to SCOPE,
+                )
+            }.getOrNull() ?: continue
             when {
                 json.has("access_token") -> {
                     session.saveTokens(
@@ -80,6 +84,7 @@ class TidalAuth(private val session: TidalSession, private val http: OkHttpClien
                 }
                 json.optString("error") == "expired_token" ->
                     throw TidalAuthException("The login code expired, try again")
+                json.optString("error") == "slow_down" -> intervalSec += 1
                 // authorization_pending and transient errors: keep polling
             }
         }

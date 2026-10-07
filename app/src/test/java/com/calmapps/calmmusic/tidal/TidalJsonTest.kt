@@ -97,6 +97,33 @@ class TidalJsonTest {
     }
 
     @Test
+    fun explicitJsonNullsParseAsAbsent() {
+        // Android's org.json turns JSONObject.NULL into the string "null"
+        // via optString; parsing must treat explicit nulls as absent.
+        val album = TidalJson.parseAlbum(
+            JSONObject(
+                """
+                {
+                  "id": 1,
+                  "title": "X",
+                  "releaseDate": null,
+                  "audioQuality": null,
+                  "artist": {"id": 2, "name": "Y"}
+                }
+                """
+            )
+        )!!
+        assertNull(album.releaseYear)
+        assertNull(album.audioQuality)
+
+        val playlist = TidalJson.parsePlaylist(
+            JSONObject("""{"uuid": "u", "title": "T", "description": null, "type": "USER"}""")
+        )!!
+        assertNull(playlist.description)
+        assertNull(playlist.creator)
+    }
+
+    @Test
     fun parsesBtsManifest() {
         val info = TidalJson.parseBtsManifest(
             """

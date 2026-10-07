@@ -198,6 +198,8 @@ class TidalClient(
         try {
             request { delete(url(API_V1 + "playlists/$uuid")) }.close()
         } catch (e: TidalApiException) {
+            // Only "not your playlist" means unfavorite instead; anything else is a real error.
+            if (e.httpCode !in setOf(401, 403, 404)) throw e
             request {
                 put(
                     url(
@@ -302,7 +304,10 @@ class TidalClient(
     private fun okhttp3.Response.asJson(): JSONObject =
         use { JSONObject(it.body?.string() ?: "{}") }
 
-    /** Fetches all pages of a `{limit, offset, totalNumberOfItems, items}` list endpoint. */
+    /**
+     * Fetches all pages of a `{limit, offset, totalNumberOfItems, items}` list
+     * endpoint. Capped at [maxItems]; a favorites list beyond that loses its tail.
+     */
     private suspend fun paged(
         base: String,
         pageSize: Int,

@@ -66,7 +66,7 @@ fun TrackRow(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    val subtitle = remember(track) {
+    val subtitle = remember(track, showTrackNumber) {
         buildString {
             if (track.artistName.isNotBlank()) append(track.artistName)
             track.albumTitle?.takeIf { it.isNotBlank() && !showTrackNumber }?.let {

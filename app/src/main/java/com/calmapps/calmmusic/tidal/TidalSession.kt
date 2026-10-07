@@ -25,16 +25,16 @@ class TidalSession(context: Context) {
             ?: AudioQuality.LOSSLESS
         set(value) = prefs.edit().putString("audio_quality", value.name).apply()
 
+    // Tokens live in plain SharedPreferences: app-private storage on a
+    // single-user device, same trade-off python-tidal's session file makes.
     fun saveTokens(accessToken: String, refreshToken: String?, tokenType: String, expiresInSec: Long) {
-        prefs.edit()
+        val editor = prefs.edit()
             .putString("access_token", accessToken)
             .putString("token_type", tokenType)
             .putLong("expires_at", System.currentTimeMillis() + expiresInSec * 1000)
-            .apply()
         // Refresh responses carry no new refresh token; keep the old one.
-        if (refreshToken != null) {
-            prefs.edit().putString("refresh_token", refreshToken).apply()
-        }
+        if (refreshToken != null) editor.putString("refresh_token", refreshToken)
+        editor.apply()
     }
 
     fun saveSessionInfo(sessionId: String, countryCode: String, userId: Long) {

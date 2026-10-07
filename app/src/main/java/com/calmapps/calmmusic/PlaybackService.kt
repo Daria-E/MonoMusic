@@ -72,15 +72,22 @@ class PlaybackService : MediaSessionService() {
         )
 
         // Controllers can't send URIs across the binder, so rebuild the
-        // tidal:// URI from the media id when items arrive.
+        // tidal:// URI from the media id when items arrive. The cache key
+        // includes the quality setting so a quality change doesn't replay
+        // old cached audio under the new label.
+        val app = application as MonoMusic
         val callback = object : MediaSession.Callback {
             override fun onAddMediaItems(
                 mediaSession: MediaSession,
                 controller: MediaSession.ControllerInfo,
                 mediaItems: MutableList<MediaItem>,
             ): ListenableFuture<MutableList<MediaItem>> {
+                val quality = app.tidalSession.audioQuality.name
                 val resolved = mediaItems.map { item ->
-                    item.buildUpon().setUri("tidal://track/${item.mediaId}").build()
+                    item.buildUpon()
+                        .setUri("tidal://track/${item.mediaId}")
+                        .setCustomCacheKey("tidal/${item.mediaId}/$quality")
+                        .build()
                 }.toMutableList()
                 return Futures.immediateFuture(resolved)
             }
@@ -112,7 +119,8 @@ class PlaybackService : MediaSessionService() {
             val streamInfo = runBlocking(Dispatchers.IO) {
                 app.tidalClient.streamInfo(trackId)
             }
-            app.nowPlayingQuality.value = streamInfo.audioQuality
+            app.resolvedQualities.value =
+                app.resolvedQualities.value + (trackId to streamInfo.audioQuality)
             dataSpec.withUri(streamInfo.url.toUri())
         }
 
@@ -137,6 +145,9 @@ class PlaybackService : MediaSessionService() {
         notificationManager.createNotificationChannel(channel)
     }
 
+    // Deliberate: on this device, swiping the app away should silence it.
+    // The default MediaSessionService behaviour (keep playing) is surprising
+    // on an e-ink phone with no quick way back to the notification shade.
     override fun onTaskRemoved(rootIntent: Intent?) {
         mediaSession?.player?.stop()
         stopSelf()

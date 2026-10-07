@@ -20,8 +20,12 @@ class MonoMusic : Application() {
     val tidalAuth: TidalAuth by lazy { TidalAuth(tidalSession, httpClient) }
     val tidalClient: TidalClient by lazy { TidalClient(tidalSession, tidalAuth, httpClient) }
 
-    /** Quality Tidal actually delivered for the current stream, e.g. "LOSSLESS". */
-    val nowPlayingQuality = MutableStateFlow<String?>(null)
+    /**
+     * Quality Tidal actually delivered, per track id (e.g. "LOSSLESS").
+     * Keyed per track because ExoPlayer resolves the next song while the
+     * previous one is still playing.
+     */
+    val resolvedQualities = MutableStateFlow<Map<Long, String>>(emptyMap())
 
     val mediaCache: SimpleCache by lazy {
         SimpleCache(

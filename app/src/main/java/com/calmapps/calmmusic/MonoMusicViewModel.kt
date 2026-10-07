@@ -14,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.calmapps.calmmusic.tidal.AudioQuality
+import com.calmapps.calmmusic.tidal.TidalAuthException
 import com.calmapps.calmmusic.tidal.TidalAlbum
 import com.calmapps.calmmusic.tidal.TidalArtist
 import com.calmapps.calmmusic.tidal.TidalPlaylist
@@ -115,8 +116,10 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var shuffleEnabled by mutableStateOf(false)
         private set
-    var streamQuality by mutableStateOf<String?>(null)
-        private set
+    private var resolvedQualities by mutableStateOf(emptyMap<Long, String>())
+
+    /** Quality Tidal delivered for the current track, once its stream resolved. */
+    val streamQuality: String? get() = currentTrack?.id?.let { resolvedQualities[it] }
 
     val hasNowPlaying: Boolean get() = currentTrack != null
 
@@ -130,6 +133,9 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             updateCurrentTrack(mediaItem)
+            // Gapless auto-advance stays in STATE_READY, so refresh here too;
+            // TIME_UNSET maps to 0 and the UI falls back to track metadata.
+            durationMs = controller?.duration?.takeIf { it > 0 } ?: 0L
         }
 
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -168,7 +174,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         }, MoreExecutors.directExecutor())
 
         viewModelScope.launch {
-            app.nowPlayingQuality.collect { streamQuality = it }
+            app.resolvedQualities.collect { resolvedQualities = it }
         }
 
         if (session.isLoggedIn) {
@@ -232,6 +238,12 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ---- library loading ----
 
+    /** Maps a load failure to a message; a dead refresh token drops back to the login screen. */
+    private fun loadError(e: Exception, fallback: String): String {
+        if (e is TidalAuthException) logout()
+        return e.message ?: fallback
+    }
+
     fun loadLibrary() {
         loadFavoriteTracks()
         loadFavoriteAlbums()
@@ -247,7 +259,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                 favoriteTrackIds = tracks.map { it.id }.toSet()
                 Loadable(tracks)
             } catch (e: Exception) {
-                Loadable(favoriteTracks.data, error = e.message ?: "Could not load songs")
+                Loadable(favoriteTracks.data, error = loadError(e, "Could not load songs"))
             }
         }
     }
@@ -260,7 +272,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                 favoriteAlbumIds = albums.map { it.id }.toSet()
                 Loadable(albums)
             } catch (e: Exception) {
-                Loadable(favoriteAlbums.data, error = e.message ?: "Could not load albums")
+                Loadable(favoriteAlbums.data, error = loadError(e, "Could not load albums"))
             }
         }
     }
@@ -273,7 +285,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                 favoriteArtistIds = artists.map { it.id }.toSet()
                 Loadable(artists)
             } catch (e: Exception) {
-                Loadable(favoriteArtists.data, error = e.message ?: "Could not load artists")
+                Loadable(favoriteArtists.data, error = loadError(e, "Could not load artists"))
             }
         }
     }
@@ -284,7 +296,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             playlists = try {
                 Loadable(client.userPlaylists())
             } catch (e: Exception) {
-                Loadable(playlists.data, error = e.message ?: "Could not load playlists")
+                Loadable(playlists.data, error = loadError(e, "Could not load playlists"))
             }
         }
     }
@@ -339,7 +351,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                 val seen = albums.map { it.id }.toSet()
                 Loadable(albums + extras.filter { it.id !in seen })
             } catch (e: Exception) {
-                Loadable(error = e.message ?: "Could not load albums")
+                Loadable(error = loadError(e, "Could not load albums"))
             }
         }
     }
@@ -508,7 +520,6 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         val id = mediaItem?.mediaId?.toLongOrNull()
         currentTrack = queueTracks.firstOrNull { it.id == id }
             ?: id?.let { trackFromMetadata(it, mediaItem.mediaMetadata) }
-        if (currentTrack == null) streamQuality = null
     }
 
     private fun trackFromMetadata(id: Long, metadata: MediaMetadata): TidalTrack =

@@ -53,6 +53,9 @@ import com.calmapps.calmmusic.ui.PlaylistsScreen
 import com.calmapps.calmmusic.ui.SearchScreen
 import com.calmapps.calmmusic.ui.SettingsScreen
 import com.calmapps.calmmusic.ui.SongsScreen
+import com.calmapps.calmmusic.tidal.TidalAlbum
+import com.calmapps.calmmusic.tidal.TidalArtist
+import com.calmapps.calmmusic.tidal.TidalPlaylist
 import com.mudita.mmd.ThemeMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.nav_bar.NavigationBarItemMMD
@@ -156,15 +159,15 @@ private fun MonoMusicNavHost(
     navController: NavHostController,
     padding: PaddingValues,
 ) {
-    val openAlbum = { album: com.calmapps.calmmusic.tidal.TidalAlbum ->
+    val openAlbum = { album: TidalAlbum ->
         viewModel.openAlbum(album)
         navController.navigate(Screen.AlbumDetails.route)
     }
-    val openArtist = { artist: com.calmapps.calmmusic.tidal.TidalArtist ->
+    val openArtist = { artist: TidalArtist ->
         viewModel.openArtist(artist)
         navController.navigate(Screen.ArtistDetails.route)
     }
-    val openPlaylist = { playlist: com.calmapps.calmmusic.tidal.TidalPlaylist ->
+    val openPlaylist = { playlist: TidalPlaylist ->
         viewModel.openPlaylist(playlist)
         navController.navigate(Screen.PlaylistDetails.route)
     }
