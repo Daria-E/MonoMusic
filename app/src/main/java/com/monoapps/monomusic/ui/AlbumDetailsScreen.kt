@@ -39,6 +39,7 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
     val tracks = state.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
     var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val isFavorite = album.id in viewModel.favoriteAlbumIds
     val isPinned = viewModel.isPinned("album", album.id.toString())
 
@@ -109,6 +110,7 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
                             if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
                         ) { viewModel.toggleFavoriteTrack(track) },
                         RowMenuEntry("Add to playlist") { pickerTrack = track },
+                        keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
                     ),
                     showDivider = index != tracks.lastIndex,
                 )
@@ -135,6 +137,12 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
             onDismiss = { showDownloadDialog = false },
         )
     }
+
+    TrackDownloadDialog(
+        track = downloadTrack,
+        viewModel = viewModel,
+        onDismiss = { downloadTrack = null },
+    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(

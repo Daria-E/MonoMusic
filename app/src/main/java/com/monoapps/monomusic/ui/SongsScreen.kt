@@ -26,6 +26,7 @@ fun SongsScreen(viewModel: MonoMusicViewModel) {
     val state = viewModel.favoriteTracks
     val tracks = state.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
+    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
@@ -50,6 +51,7 @@ fun SongsScreen(viewModel: MonoMusicViewModel) {
                             RowMenuEntry("Remove from favorites") {
                                 viewModel.toggleFavoriteTrack(track)
                             },
+                            keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
                         ),
                         showDivider = index != tracks.lastIndex,
                     )
@@ -68,6 +70,12 @@ fun SongsScreen(viewModel: MonoMusicViewModel) {
             }
         }
     }
+
+    TrackDownloadDialog(
+        track = downloadTrack,
+        viewModel = viewModel,
+        onDismiss = { downloadTrack = null },
+    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(

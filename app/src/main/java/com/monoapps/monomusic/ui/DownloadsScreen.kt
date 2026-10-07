@@ -88,7 +88,13 @@ fun DownloadsScreen(viewModel: MonoMusicViewModel) {
                         Spacer(modifier = Modifier.height(4.dp))
                         TextMMD(
                             text = buildString {
-                                append(if (collection.type == "album") "Album" else "Playlist")
+                                append(
+                                    when (collection.type) {
+                                        "album" -> "Album"
+                                        "playlist" -> "Playlist"
+                                        else -> "Song"
+                                    }
+                                )
                                 collection.subtitle?.let { append(" • $it") }
                                 append(" • $downloaded of ${collection.tracks.size} songs")
                                 append(" • ${collection.quality.name}")

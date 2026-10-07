@@ -64,16 +64,16 @@ fun SettingsScreen(viewModel: MonoMusicViewModel, onOpenDownloads: () -> Unit) {
         DashedDivider(thickness = 1.dp)
         Spacer(modifier = Modifier.height(24.dp))
 
-        TextMMD(text = "Downloads", fontSize = 22.sp, fontWeight = FontWeight.Black)
+        TextMMD(text = "Offline", fontSize = 22.sp, fontWeight = FontWeight.Black)
         Spacer(modifier = Modifier.height(8.dp))
         TwoLineRow(
-            title = "Kept offline",
-            subtitle = buildString {
+            title = buildString {
                 val count = viewModel.offlineTrackIds.size
                 append(if (count == 1) "1 song" else "$count songs")
                 append(" • ${OfflineManager.formatBytes(viewModel.downloadsSizeBytes())}")
                 append(if (viewModel.downloadsOnSdCard) " • SD card" else " • phone storage")
             },
+            subtitle = null,
             onClick = onOpenDownloads,
             showDivider = false,
         )

@@ -46,6 +46,7 @@ fun SearchScreen(
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
+    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val results = viewModel.searchResults
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -71,7 +72,12 @@ fun SearchScreen(
                 )
 
                 else -> when (tab) {
-                    0 -> SearchTrackResults(viewModel, results.tracks) { pickerTrack = it }
+                    0 -> SearchTrackResults(
+                        viewModel,
+                        results.tracks,
+                        onAddToPlaylist = { pickerTrack = it },
+                        onKeepOffline = { downloadTrack = it },
+                    )
                     1 -> SearchList(results.albums, { it.id }, "No albums found.") { album, last ->
                         AlbumRow(album, onClick = { onOpenAlbum(album) }, showDivider = !last)
                     }
@@ -85,6 +91,12 @@ fun SearchScreen(
             }
         }
     }
+
+    TrackDownloadDialog(
+        track = downloadTrack,
+        viewModel = viewModel,
+        onDismiss = { downloadTrack = null },
+    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(
@@ -103,6 +115,7 @@ private fun SearchTrackResults(
     viewModel: MonoMusicViewModel,
     tracks: List<TidalTrack>,
     onAddToPlaylist: (TidalTrack) -> Unit,
+    onKeepOffline: (TidalTrack) -> Unit,
 ) {
     if (tracks.isEmpty()) {
         CenteredMessage("No songs found.")
@@ -120,6 +133,7 @@ private fun SearchTrackResults(
                         if (isFavorite) "Remove from favorites" else "Add to favorites"
                     ) { viewModel.toggleFavoriteTrack(track) },
                     RowMenuEntry("Add to playlist") { onAddToPlaylist(track) },
+                    keepOfflineMenuEntry(viewModel, track) { onKeepOffline(it) },
                 ),
                 showDivider = index != tracks.lastIndex,
             )

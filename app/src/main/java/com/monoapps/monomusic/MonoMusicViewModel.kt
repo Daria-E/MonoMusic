@@ -77,6 +77,18 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ---- details ----
 
+    // Small LRU caches so revisiting a details screen is instant.
+    private val albumTracksCache = lruCache<Long, List<TidalTrack>>()
+    private val artistTopTracksCache = lruCache<Long, List<TidalTrack>>()
+    private val artistAlbumsCache = lruCache<Long, List<TidalAlbum>>()
+    private val playlistTracksCache = lruCache<String, List<TidalTrack>>()
+
+    private fun <K, V> lruCache(maxSize: Int = 20): MutableMap<K, V> =
+        object : LinkedHashMap<K, V>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>) =
+                size > maxSize
+        }
+
     var selectedAlbum by mutableStateOf<TidalAlbum?>(null)
         private set
     var albumTracks by mutableStateOf(Loadable<List<TidalTrack>>())
@@ -357,10 +369,16 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openAlbum(album: TidalAlbum) {
         selectedAlbum = album
+        albumTracksCache[album.id]?.let {
+            albumTracks = Loadable(it)
+            return
+        }
         albumTracks = Loadable(isLoading = true)
         viewModelScope.launch {
             albumTracks = try {
-                Loadable(client.albumTracks(album.id))
+                val tracks = client.albumTracks(album.id)
+                albumTracksCache[album.id] = tracks
+                Loadable(tracks)
             } catch (e: Exception) {
                 Loadable(error = e.message ?: "Could not load album")
             }
@@ -369,34 +387,50 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openArtist(artist: TidalArtist) {
         selectedArtist = artist
-        artistTopTracks = Loadable(isLoading = true)
-        artistAlbums = Loadable(isLoading = true)
-        viewModelScope.launch {
-            artistTopTracks = try {
-                Loadable(client.artistTopTracks(artist.id))
-            } catch (e: Exception) {
-                Loadable(error = e.message ?: "Could not load top songs")
+        val cachedTop = artistTopTracksCache[artist.id]
+        val cachedAlbums = artistAlbumsCache[artist.id]
+        artistTopTracks = cachedTop?.let { Loadable(it) } ?: Loadable(isLoading = true)
+        artistAlbums = cachedAlbums?.let { Loadable(it) } ?: Loadable(isLoading = true)
+        if (cachedTop == null) {
+            viewModelScope.launch {
+                artistTopTracks = try {
+                    val tracks = client.artistTopTracks(artist.id)
+                    artistTopTracksCache[artist.id] = tracks
+                    Loadable(tracks)
+                } catch (e: Exception) {
+                    Loadable(error = e.message ?: "Could not load top songs")
+                }
             }
         }
-        viewModelScope.launch {
-            artistAlbums = try {
-                val albums = client.artistAlbums(artist.id)
-                val extras = runCatching { client.artistEpsAndSingles(artist.id) }
-                    .getOrDefault(emptyList())
-                val seen = albums.map { it.id }.toSet()
-                Loadable(albums + extras.filter { it.id !in seen })
-            } catch (e: Exception) {
-                Loadable(error = loadError(e, "Could not load albums"))
+        if (cachedAlbums == null) {
+            viewModelScope.launch {
+                artistAlbums = try {
+                    val albums = client.artistAlbums(artist.id)
+                    val extras = runCatching { client.artistEpsAndSingles(artist.id) }
+                        .getOrDefault(emptyList())
+                    val seen = albums.map { it.id }.toSet()
+                    val merged = albums + extras.filter { it.id !in seen }
+                    artistAlbumsCache[artist.id] = merged
+                    Loadable(merged)
+                } catch (e: Exception) {
+                    Loadable(error = loadError(e, "Could not load albums"))
+                }
             }
         }
     }
 
     fun openPlaylist(playlist: TidalPlaylist) {
         selectedPlaylist = playlist
+        playlistTracksCache[playlist.uuid]?.let {
+            playlistTracks = Loadable(it)
+            return
+        }
         playlistTracks = Loadable(isLoading = true)
         viewModelScope.launch {
             playlistTracks = try {
-                Loadable(client.playlistTracks(playlist.uuid))
+                val tracks = client.playlistTracks(playlist.uuid)
+                playlistTracksCache[playlist.uuid] = tracks
+                Loadable(tracks)
             } catch (e: Exception) {
                 Loadable(error = e.message ?: "Could not load playlist")
             }
@@ -407,50 +441,90 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleFavoriteTrack(track: TidalTrack) {
         val isFavorite = track.id in favoriteTrackIds
-        favoriteTrackIds = if (isFavorite) favoriteTrackIds - track.id else favoriteTrackIds + track.id
+        applyTrackFavorite(track, nowFavorite = !isFavorite)
         viewModelScope.launch {
             try {
                 if (isFavorite) client.removeFavoriteTrack(track.id)
                 else client.addFavoriteTrack(track.id)
-                loadFavoriteTracks()
             } catch (e: Exception) {
-                favoriteTrackIds =
-                    if (isFavorite) favoriteTrackIds + track.id else favoriteTrackIds - track.id
+                applyTrackFavorite(track, nowFavorite = isFavorite)
                 uiMessage = e.message ?: "Could not update favorites"
             }
+        }
+    }
+
+    // Edit the local list in place; a full refetch pages through the whole
+    // favorites list and makes every toggle feel slow.
+    private fun applyTrackFavorite(track: TidalTrack, nowFavorite: Boolean) {
+        favoriteTrackIds =
+            if (nowFavorite) favoriteTrackIds + track.id else favoriteTrackIds - track.id
+        favoriteTracks.data?.let { list ->
+            favoriteTracks = favoriteTracks.copy(
+                data = if (nowFavorite) {
+                    (list.filterNot { it.id == track.id } + track)
+                        .sortedBy { it.title.lowercase() }
+                } else {
+                    list.filterNot { it.id == track.id }
+                }
+            )
         }
     }
 
     fun toggleFavoriteAlbum(album: TidalAlbum) {
         val isFavorite = album.id in favoriteAlbumIds
-        favoriteAlbumIds = if (isFavorite) favoriteAlbumIds - album.id else favoriteAlbumIds + album.id
+        applyAlbumFavorite(album, nowFavorite = !isFavorite)
         viewModelScope.launch {
             try {
                 if (isFavorite) client.removeFavoriteAlbum(album.id)
                 else client.addFavoriteAlbum(album.id)
-                loadFavoriteAlbums()
             } catch (e: Exception) {
-                favoriteAlbumIds =
-                    if (isFavorite) favoriteAlbumIds + album.id else favoriteAlbumIds - album.id
+                applyAlbumFavorite(album, nowFavorite = isFavorite)
                 uiMessage = e.message ?: "Could not update favorites"
             }
         }
     }
 
+    private fun applyAlbumFavorite(album: TidalAlbum, nowFavorite: Boolean) {
+        favoriteAlbumIds =
+            if (nowFavorite) favoriteAlbumIds + album.id else favoriteAlbumIds - album.id
+        favoriteAlbums.data?.let { list ->
+            favoriteAlbums = favoriteAlbums.copy(
+                data = if (nowFavorite) {
+                    (list.filterNot { it.id == album.id } + album)
+                        .sortedBy { it.title.lowercase() }
+                } else {
+                    list.filterNot { it.id == album.id }
+                }
+            )
+        }
+    }
+
     fun toggleFavoriteArtist(artist: TidalArtist) {
         val isFavorite = artist.id in favoriteArtistIds
-        favoriteArtistIds =
-            if (isFavorite) favoriteArtistIds - artist.id else favoriteArtistIds + artist.id
+        applyArtistFavorite(artist, nowFavorite = !isFavorite)
         viewModelScope.launch {
             try {
                 if (isFavorite) client.removeFavoriteArtist(artist.id)
                 else client.addFavoriteArtist(artist.id)
-                loadFavoriteArtists()
             } catch (e: Exception) {
-                favoriteArtistIds =
-                    if (isFavorite) favoriteArtistIds + artist.id else favoriteArtistIds - artist.id
+                applyArtistFavorite(artist, nowFavorite = isFavorite)
                 uiMessage = e.message ?: "Could not update favorites"
             }
+        }
+    }
+
+    private fun applyArtistFavorite(artist: TidalArtist, nowFavorite: Boolean) {
+        favoriteArtistIds =
+            if (nowFavorite) favoriteArtistIds + artist.id else favoriteArtistIds - artist.id
+        favoriteArtists.data?.let { list ->
+            favoriteArtists = favoriteArtists.copy(
+                data = if (nowFavorite) {
+                    (list.filterNot { it.id == artist.id } + artist)
+                        .sortedBy { it.name.lowercase() }
+                } else {
+                    list.filterNot { it.id == artist.id }
+                }
+            )
         }
     }
 
@@ -473,6 +547,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 client.addTrackToPlaylist(playlist.uuid, track.id)
                 uiMessage = "Added to ${playlist.title}"
+                playlistTracksCache.remove(playlist.uuid)
                 loadPlaylists()
                 if (selectedPlaylist?.uuid == playlist.uuid) openPlaylist(playlist)
             } catch (e: Exception) {
@@ -486,6 +561,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 client.removePlaylistItem(playlist.uuid, index)
+                playlistTracksCache.remove(playlist.uuid)
                 openPlaylist(playlist)
                 loadPlaylists()
             } catch (e: Exception) {
@@ -499,6 +575,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 client.removePlaylistFromCollection(playlist.uuid)
                 uiMessage = "Playlist removed"
+                playlistTracksCache.remove(playlist.uuid)
                 loadPlaylists()
             } catch (e: Exception) {
                 uiMessage = e.message ?: "Could not remove playlist"

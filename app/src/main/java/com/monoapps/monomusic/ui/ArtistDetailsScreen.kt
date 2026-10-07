@@ -42,6 +42,7 @@ fun ArtistDetailsScreen(
     val topTracks = topTracksState.data.orEmpty()
     val albums = albumsState.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
+    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val isFavorite = artist.id in viewModel.favoriteArtistIds
 
     if (topTracksState.isLoading && albumsState.isLoading) {
@@ -98,6 +99,7 @@ fun ArtistDetailsScreen(
                             if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
                         ) { viewModel.toggleFavoriteTrack(track) },
                         RowMenuEntry("Add to playlist") { pickerTrack = track },
+                        keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
                     ),
                     showDivider = index != topTracks.lastIndex,
                 )
@@ -127,6 +129,12 @@ fun ArtistDetailsScreen(
             item { TextMMD(text = albumsState.error, fontSize = 14.sp) }
         }
     }
+
+    TrackDownloadDialog(
+        track = downloadTrack,
+        viewModel = viewModel,
+        onDismiss = { downloadTrack = null },
+    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(
