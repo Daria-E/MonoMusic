@@ -80,6 +80,7 @@ class LibraryCache(context: Context) {
             .put("volumeNumber", t.volumeNumber)
             .put("explicit", t.explicit)
             .putOpt("audioQuality", t.audioQuality)
+            .put("addedAt", t.addedAt)
 
     suspend fun saveAlbums(albums: List<TidalAlbum>) = write("albums.json", albums) { a ->
         JSONObject()

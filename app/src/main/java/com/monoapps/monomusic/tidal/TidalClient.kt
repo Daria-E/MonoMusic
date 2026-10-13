@@ -368,7 +368,13 @@ class TidalClient(
 
         fun JSONObject.items(): List<JSONObject> =
             optJSONArray("items").objects().map { entry ->
-                if (unwrapKey != null) entry.optJSONObject(unwrapKey) ?: entry else entry
+                if (unwrapKey != null) {
+                    // Keep the wrapper's date-added so favorites can sort on it.
+                    (entry.optJSONObject(unwrapKey) ?: entry).also { item ->
+                        entry.optString("created").takeIf { it.isNotEmpty() }
+                            ?.let { item.put("created", it) }
+                    }
+                } else entry
             }
 
         val first = page(0)

@@ -49,13 +49,17 @@ fun DownloadsScreen(viewModel: MonoMusicViewModel) {
         item {
             val pending = viewModel.offlinePendingCount
             val location = if (viewModel.downloadsOnSdCard) "SD card" else "phone storage"
+            val status = when {
+                viewModel.offlineStorageLow && pending > 0 ->
+                    "Storage almost full, downloads paused, $pending songs left"
+                pending > 0 -> "Downloading, $pending songs left"
+                else -> null
+            }
             TextMMD(
-                text = if (pending > 0) {
-                    "Downloading, $pending songs left • " +
-                        "${OfflineManager.formatBytes(viewModel.offlineSizeBytes)} on $location"
-                } else {
-                    "${OfflineManager.formatBytes(viewModel.offlineSizeBytes)} on $location"
-                },
+                text = listOfNotNull(
+                    status,
+                    "${OfflineManager.formatBytes(viewModel.offlineSizeBytes)} on $location",
+                ).joinToString(" • "),
                 fontSize = 14.sp,
             )
             Spacer(modifier = Modifier.height(12.dp))

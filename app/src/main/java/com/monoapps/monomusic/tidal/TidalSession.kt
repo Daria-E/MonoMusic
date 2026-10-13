@@ -25,10 +25,12 @@ class TidalSession(context: Context) {
             ?: AudioQuality.LOSSLESS
         set(value) = prefs.edit().putString("audio_quality", value.name).apply()
 
+    // Downloads default to HIGH, not LOSSLESS: FLAC fills a 32 GB phone in
+    // one big playlist. Anyone who wants lossless picks it in Settings.
     var downloadQuality: AudioQuality
         get() = prefs.getString("download_quality", null)
             ?.let { stored -> AudioQuality.entries.firstOrNull { it.name == stored } }
-            ?: AudioQuality.LOSSLESS
+            ?: AudioQuality.HIGH
         set(value) = prefs.edit().putString("download_quality", value.name).apply()
 
     // Tokens live in plain SharedPreferences: app-private storage on a

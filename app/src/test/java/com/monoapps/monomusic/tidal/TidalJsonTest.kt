@@ -44,6 +44,30 @@ class TidalJsonTest {
     }
 
     @Test
+    fun parsesDateAdded() {
+        // Favorites API shape: ISO "created" (merged in from the wrapper).
+        val fromApi = TidalJson.parseTrack(
+            JSONObject("""{"id": 1, "title": "T", "created": "2024-06-12T10:20:30.000+0000"}""")
+        )!!
+        assertEquals(1718187630000L, fromApi.addedAt)
+
+        // Our own cache shape: addedAt millis take precedence.
+        val fromCache = TidalJson.parseTrack(
+            JSONObject("""{"id": 1, "title": "T", "addedAt": 42}""")
+        )!!
+        assertEquals(42L, fromCache.addedAt)
+
+        // Absent or malformed dates fall back to 0 (unknown).
+        assertEquals(0L, TidalJson.parseTrack(JSONObject("""{"id": 1, "title": "T"}"""))!!.addedAt)
+        assertEquals(
+            0L,
+            TidalJson.parseTrack(
+                JSONObject("""{"id": 1, "title": "T", "created": "yesterday"}""")
+            )!!.addedAt,
+        )
+    }
+
+    @Test
     fun parsesAlbumWithReleaseYear() {
         val json = JSONObject(
             """

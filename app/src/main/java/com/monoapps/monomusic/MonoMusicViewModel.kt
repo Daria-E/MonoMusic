@@ -84,14 +84,17 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     // The library tabs show favorites merged with everything derived from
     // offline downloads and liked albums, deduplicated by id.
 
-    /** Songs tab: favorite tracks, downloaded tracks, and liked albums' tracks. */
+    /** Songs tab: favorite tracks, downloaded tracks, and liked albums' tracks, newest first. */
     val libraryTracks by derivedStateOf {
         val seen = mutableSetOf<Long>()
         (favoriteTracks.data.orEmpty() +
             offlineCollections.flatMap { it.tracks } +
             likedAlbumTracks.values.flatten())
             .filter { seen.add(it.id) }
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            .sortedWith(
+                compareByDescending<TidalTrack> { it.addedAt }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title }
+            )
     }
 
     /** Albums tab: favorite albums plus albums of downloaded albums/songs. */
@@ -222,6 +225,8 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var offlineSizeBytes by mutableStateOf(0L)
         private set
+    var offlineStorageLow by mutableStateOf(false)
+        private set
 
     val downloadsOnSdCard: Boolean get() = app.offlineManager.onRemovableStorage
 
@@ -229,14 +234,19 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         offlineCollections.any { it.key == "$type:$id" }
 
     fun pinCollection(collection: OfflineCollection) {
-        app.offlineManager.pin(collection)
-        val estimate = OfflineManager.formatBytes(
-            OfflineManager.estimatedBytes(
-                collection.tracks.sumOf { it.durationSec.toLong() },
-                collection.quality,
-            )
+        val estimate = OfflineManager.estimatedBytes(
+            collection.tracks.sumOf { it.durationSec.toLong() },
+            collection.quality,
         )
-        uiMessage = "Downloading ${collection.title} (about $estimate)"
+        val free = app.offlineManager.freeBytes
+        if (estimate > free - OfflineManager.MIN_FREE_BYTES) {
+            uiMessage = "Not enough space for ${collection.title}: " +
+                "needs about ${OfflineManager.formatBytes(estimate)}, " +
+                "${OfflineManager.formatBytes(free)} free"
+            return
+        }
+        app.offlineManager.pin(collection)
+        uiMessage = "Downloading ${collection.title} (about ${OfflineManager.formatBytes(estimate)})"
     }
 
     fun pinTrack(track: TidalTrack) = pinCollection(
@@ -313,6 +323,9 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         }
         viewModelScope.launch {
             app.offlineManager.sizeBytes.collect { offlineSizeBytes = it }
+        }
+        viewModelScope.launch {
+            app.offlineManager.storageLow.collect { offlineStorageLow = it }
         }
 
         if (session.isLoggedIn) {
@@ -592,8 +605,8 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         favoriteTracks.data?.let { list ->
             favoriteTracks = favoriteTracks.copy(
                 data = if (nowFavorite) {
-                    (list.filterNot { it.id == track.id } + track)
-                        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+                    list.filterNot { it.id == track.id } +
+                        track.copy(addedAt = System.currentTimeMillis())
                 } else {
                     list.filterNot { it.id == track.id }
                 }
@@ -613,7 +626,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                     client.addFavoriteAlbum(album.id)
                     val tracks = albumTracksCache[album.id]
                         ?: runCatching { client.albumTracks(album.id) }.getOrNull()
-                    tracks?.let { setLikedAlbumTracks(likedAlbumTracks + (album.id to it)) }
+                    tracks?.let { setLikedAlbumTracks(likedAlbumTracks + (album.id to stampAdded(it))) }
                 }
             } catch (e: Exception) {
                 applyAlbumFavorite(album, nowFavorite = isFavorite)
@@ -628,10 +641,16 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         var map = likedAlbumTracks.filterKeys { it in ids }
         albums.filter { it.id !in map }.forEach { album ->
             runCatching { client.albumTracks(album.id) }.getOrNull()?.let {
-                map = map + (album.id to it)
+                map = map + (album.id to stampAdded(it))
             }
         }
         if (map != likedAlbumTracks) setLikedAlbumTracks(map)
+    }
+
+    /** Like-time as date-added, so a liked album's songs sort as newly added. */
+    private fun stampAdded(tracks: List<TidalTrack>): List<TidalTrack> {
+        val now = System.currentTimeMillis()
+        return tracks.map { if (it.addedAt > 0) it else it.copy(addedAt = now) }
     }
 
     private suspend fun setLikedAlbumTracks(map: Map<Long, List<TidalTrack>>) {

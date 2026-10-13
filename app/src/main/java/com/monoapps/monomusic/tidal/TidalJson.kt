@@ -2,6 +2,8 @@ package com.monoapps.monomusic.tidal
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /** Parsing of Tidal API JSON into models; separate from the client so it is unit-testable. */
 internal object TidalJson {
@@ -35,7 +37,17 @@ internal object TidalJson {
             volumeNumber = o.optInt("volumeNumber", 1),
             explicit = o.optBoolean("explicit"),
             audioQuality = o.stringOrNull("audioQuality"),
+            // "addedAt" is our own cache format; "created" the favorites API's.
+            addedAt = if (o.has("addedAt")) o.optLong("addedAt") else createdMillis(o),
         )
+    }
+
+    private fun createdMillis(o: JSONObject): Long {
+        val created = o.stringOrNull("created") ?: return 0L
+        // New instance per call: SimpleDateFormat is not thread-safe.
+        return runCatching {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).parse(created)?.time
+        }.getOrNull() ?: 0L
     }
 
     fun parseAlbum(o: JSONObject): TidalAlbum? {

@@ -12,6 +12,8 @@ data class TidalTrack(
     val volumeNumber: Int,
     val explicit: Boolean,
     val audioQuality: String?,
+    /** Millis the song entered the library (favorited/downloaded/liked); 0 when unknown. */
+    val addedAt: Long = 0,
 )
 
 data class TidalAlbum(
