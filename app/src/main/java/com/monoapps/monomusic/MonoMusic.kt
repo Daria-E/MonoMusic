@@ -6,6 +6,7 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import com.monoapps.monomusic.offline.OfflineManager
+import com.monoapps.monomusic.tidal.LibraryCache
 import com.monoapps.monomusic.tidal.TidalAuth
 import com.monoapps.monomusic.tidal.TidalClient
 import com.monoapps.monomusic.tidal.TidalSession
@@ -22,6 +23,18 @@ class MonoMusic : Application() {
     val tidalClient: TidalClient by lazy { TidalClient(tidalSession, tidalAuth, httpClient) }
     val offlineManager: OfflineManager by lazy {
         OfflineManager(this, tidalClient, tidalSession, httpClient)
+    }
+    val libraryCache: LibraryCache by lazy { LibraryCache(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Warm the disk-touching singletons off the main thread: SimpleCache
+        // scans its directory and OfflineManager probes external storage on
+        // init, both of which otherwise happen on first main-thread access.
+        Thread {
+            offlineManager
+            mediaCache
+        }.start()
     }
 
     /**

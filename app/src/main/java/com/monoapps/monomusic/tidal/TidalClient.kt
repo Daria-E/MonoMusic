@@ -2,6 +2,9 @@ package com.monoapps.monomusic.tidal
 
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -42,6 +45,7 @@ class TidalClient(
 
     /** Fetches session id / country / user id for the current token and persists them. */
     suspend fun loadSessionInfo() {
+        qualityCap = null
         val json = request { get(url(API_V1 + "sessions")) }.asJson()
         session.saveSessionInfo(
             sessionId = json.getString("sessionId"),
@@ -226,17 +230,26 @@ class TidalClient(
      * not include, so step down from the selected quality until one works;
      * the delivered quality is reported in the result either way.
      */
+    // Highest quality this account has actually delivered after a higher one
+    // was rejected. Later tracks start the fallback chain here, so each track
+    // start pays the doomed requests at most once per session.
+    @Volatile
+    private var qualityCap: AudioQuality? = null
+
     suspend fun streamInfo(
         trackId: Long,
         preferredQuality: AudioQuality = session.audioQuality,
     ): TidalStreamInfo {
+        val start = qualityCap?.let { minOf(it, preferredQuality) } ?: preferredQuality
         val fallbackChain = AudioQuality.entries
-            .filter { it.ordinal <= preferredQuality.ordinal }
+            .filter { it.ordinal <= start.ordinal }
             .sortedByDescending { it.ordinal }
         var lastError: TidalApiException? = null
         for (quality in fallbackChain) {
             try {
-                return streamInfoAt(trackId, quality)
+                val info = streamInfoAt(trackId, quality)
+                if (lastError != null) qualityCap = quality
+                return info
             } catch (e: TidalApiException) {
                 // 4xx (except rate limiting) means "not allowed at this
                 // quality"; anything else is a real failure.
@@ -289,45 +302,47 @@ class TidalClient(
      * Retry-After on 429. The builder is re-invoked per attempt so retries
      * pick up a refreshed token.
      */
-    private suspend fun request(build: () -> Request.Builder): okhttp3.Response {
-        if (System.currentTimeMillis() >= session.expiresAtMillis - 60_000) {
-            auth.refreshAccessToken()
+    // The whole exchange runs on IO: callers sit on the main dispatcher, and
+    // reading a response body is a blocking socket read, not just parsing.
+    private suspend fun request(build: () -> Request.Builder): okhttp3.Response =
+        withContext(Dispatchers.IO) {
+            if (System.currentTimeMillis() >= session.expiresAtMillis - 60_000) {
+                auth.refreshAccessToken()
+            }
+            var response = execute(build)
+            if (response.code == 401) {
+                response.close()
+                auth.refreshAccessToken(force = true)
+                response = execute(build)
+            }
+            if (response.code == 429) {
+                val waitSec = response.header("Retry-After")?.toLongOrNull() ?: 2L
+                response.close()
+                delay(waitSec.coerceAtMost(15) * 1000)
+                response = execute(build)
+            }
+            if (!response.isSuccessful) {
+                val code = response.code
+                val message = response.use { resp ->
+                    runCatching { JSONObject(resp.body?.string() ?: "") }
+                        .getOrNull()?.optString("userMessage")?.takeIf { it.isNotEmpty() }
+                } ?: "Tidal request failed (HTTP $code)"
+                throw TidalApiException(code, message)
+            }
+            response
         }
-        var response = execute(build)
-        if (response.code == 401) {
-            response.close()
-            auth.refreshAccessToken(force = true)
-            response = execute(build)
-        }
-        if (response.code == 429) {
-            val waitSec = response.header("Retry-After")?.toLongOrNull() ?: 2L
-            response.close()
-            delay(waitSec.coerceAtMost(15) * 1000)
-            response = execute(build)
-        }
-        if (!response.isSuccessful) {
-            val code = response.code
-            val message = response.use { resp ->
-                runCatching { JSONObject(resp.body?.string() ?: "") }
-                    .getOrNull()?.optString("userMessage")?.takeIf { it.isNotEmpty() }
-            } ?: "Tidal request failed (HTTP $code)"
-            throw TidalApiException(code, message)
-        }
-        return response
+
+    private fun execute(build: () -> Request.Builder): okhttp3.Response {
+        val request = build()
+            .header("Authorization", "${session.tokenType} ${session.accessToken}")
+            .header("User-Agent", USER_AGENT)
+            .header("x-tidal-client-version", CLIENT_VERSION)
+            .build()
+        return http.newCall(request).execute()
     }
 
-    private suspend fun execute(build: () -> Request.Builder): okhttp3.Response =
-        withContext(Dispatchers.IO) {
-            val request = build()
-                .header("Authorization", "${session.tokenType} ${session.accessToken}")
-                .header("User-Agent", USER_AGENT)
-                .header("x-tidal-client-version", CLIENT_VERSION)
-                .build()
-            http.newCall(request).execute()
-        }
-
-    private fun okhttp3.Response.asJson(): JSONObject =
-        use { JSONObject(it.body?.string() ?: "{}") }
+    private suspend fun okhttp3.Response.asJson(): JSONObject =
+        withContext(Dispatchers.IO) { use { JSONObject(it.body?.string() ?: "{}") } }
 
     /**
      * Fetches all pages of a `{limit, offset, totalNumberOfItems, items}` list
@@ -340,28 +355,34 @@ class TidalClient(
         extraParams: Array<Pair<String, String>> = emptyArray(),
         maxItems: Int = 1000,
     ): List<JSONObject> {
-        val result = mutableListOf<JSONObject>()
-        var offset = 0
-        while (offset < maxItems) {
-            val json = request {
-                get(
-                    url(
-                        base,
-                        "limit" to pageSize.toString(),
-                        "offset" to offset.toString(),
-                        *extraParams,
-                    )
+        suspend fun page(offset: Int): JSONObject = request {
+            get(
+                url(
+                    base,
+                    "limit" to pageSize.toString(),
+                    "offset" to offset.toString(),
+                    *extraParams,
                 )
-            }.asJson()
-            val items = json.optJSONArray("items").objects()
-            items.forEach { entry ->
-                result.add(if (unwrapKey != null) entry.optJSONObject(unwrapKey) ?: entry else entry)
+            )
+        }.asJson()
+
+        fun JSONObject.items(): List<JSONObject> =
+            optJSONArray("items").objects().map { entry ->
+                if (unwrapKey != null) entry.optJSONObject(unwrapKey) ?: entry else entry
             }
-            val total = json.optInt("totalNumberOfItems", result.size)
-            offset += pageSize
-            if (items.size < pageSize || result.size >= total) break
-        }
-        return result
+
+        val first = page(0)
+        val result = first.items()
+        val total = first.optInt("totalNumberOfItems", result.size).coerceAtMost(maxItems)
+        if (result.size >= total) return result
+        // The first page reports the total, so the rest is fetched
+        // concurrently (OkHttp caps per-host parallelism) instead of one
+        // round trip at a time.
+        return result + coroutineScope {
+            (pageSize until total step pageSize)
+                .map { offset -> async { page(offset).items() } }
+                .awaitAll()
+        }.flatten()
     }
 
 }

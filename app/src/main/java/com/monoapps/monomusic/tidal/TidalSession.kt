@@ -25,6 +25,12 @@ class TidalSession(context: Context) {
             ?: AudioQuality.LOSSLESS
         set(value) = prefs.edit().putString("audio_quality", value.name).apply()
 
+    var downloadQuality: AudioQuality
+        get() = prefs.getString("download_quality", null)
+            ?.let { stored -> AudioQuality.entries.firstOrNull { it.name == stored } }
+            ?: AudioQuality.LOSSLESS
+        set(value) = prefs.edit().putString("download_quality", value.name).apply()
+
     // Tokens live in plain SharedPreferences: app-private storage on a
     // single-user device, same trade-off python-tidal's session file makes.
     fun saveTokens(accessToken: String, refreshToken: String?, tokenType: String, expiresInSec: Long) {
@@ -46,8 +52,10 @@ class TidalSession(context: Context) {
     }
 
     fun clear() {
-        val quality = audioQuality
+        val streaming = audioQuality
+        val download = downloadQuality
         prefs.edit().clear().apply()
-        audioQuality = quality
+        audioQuality = streaming
+        downloadQuality = download
     }
 }

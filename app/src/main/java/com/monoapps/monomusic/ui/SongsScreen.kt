@@ -20,43 +20,48 @@ import com.monoapps.monomusic.MonoMusicViewModel
 import com.monoapps.monomusic.tidal.TidalTrack
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 
-/** Favorite tracks on Tidal; the closest thing to the old "all songs" library. */
+/** Favorite, downloaded, and liked-album tracks; the "all songs" library. */
 @Composable
 fun SongsScreen(viewModel: MonoMusicViewModel) {
     val state = viewModel.favoriteTracks
-    val tracks = state.data.orEmpty()
+    val tracks = viewModel.libraryTracks
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
-    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
-            state.data == null && state.isLoading -> CenteredMessage("Loading songs…")
-
-            state.data == null && state.error != null ->
-                CenteredError(state.error) { viewModel.loadFavoriteTracks() }
-
-            tracks.isEmpty() -> CenteredMessage(
-                "No favorite songs yet.\n\nSearch Tidal and long-press a song to add it to your favorites."
-            )
-
-            else -> LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
+            tracks.isNotEmpty() -> LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
                 itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
+                    val isFavorite = track.id in viewModel.favoriteTrackIds
+                    val trackPinned = viewModel.isPinned("track", track.id.toString())
                     TrackRow(
                         track = track,
                         isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
                         isDownloaded = track.id in viewModel.offlineTrackIds,
                         onClick = { viewModel.playTracks(tracks, index) },
-                        menuEntries = listOf(
-                            RowMenuEntry("Add to playlist") { pickerTrack = track },
-                            RowMenuEntry("Remove from favorites") {
-                                viewModel.toggleFavoriteTrack(track)
-                            },
-                            keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
-                        ),
+                        // Remembered so the row can skip recomposition; a fresh
+                        // list every pass defeats Compose's parameter check.
+                        menuEntries = remember(track, isFavorite, trackPinned) {
+                            listOf(
+                                RowMenuEntry("Add to playlist") { pickerTrack = track },
+                                RowMenuEntry(
+                                    if (isFavorite) "Remove from favorites" else "Add to favorites"
+                                ) { viewModel.toggleFavoriteTrack(track) },
+                                keepOfflineMenuEntry(viewModel, track),
+                            )
+                        },
                         showDivider = index != tracks.lastIndex,
                     )
                 }
             }
+
+            state.data == null && state.isLoading -> CenteredMessage("Loading songs…")
+
+            state.data == null && state.error != null ->
+                CenteredError(state.error) { viewModel.loadFavoriteTracks() }
+
+            else -> CenteredMessage(
+                "No songs yet.\n\nFavorite songs, like an album, or keep music offline to see them here."
+            )
         }
 
         if (tracks.isNotEmpty()) {
@@ -70,12 +75,6 @@ fun SongsScreen(viewModel: MonoMusicViewModel) {
             }
         }
     }
-
-    TrackDownloadDialog(
-        track = downloadTrack,
-        viewModel = viewModel,
-        onDismiss = { downloadTrack = null },
-    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(

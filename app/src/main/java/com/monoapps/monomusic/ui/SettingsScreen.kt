@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -28,80 +29,116 @@ import com.mudita.mmd.components.text.TextMMD
 
 @Composable
 fun SettingsScreen(viewModel: MonoMusicViewModel, onOpenDownloads: () -> Unit) {
+    // Fine-grained items: MMD's lazy list swipes a page at a time and snaps
+    // to item boundaries, so section-sized items get skipped over. Small
+    // row-sized items keep every scroll stop within a row of its target.
     LazyColumnMMD(
         contentPadding = PaddingValues(16.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { Column {
-        TextMMD(text = "Streaming quality", fontSize = 22.sp, fontWeight = FontWeight.Black)
-        Spacer(modifier = Modifier.height(8.dp))
-        AudioQuality.entries.forEach { quality ->
+        qualitySection(
+            title = "Streaming quality",
+            note = "Takes effect from the next song. Higher quality uses more data.",
+            selected = viewModel.audioQuality,
+            onSelect = { viewModel.selectAudioQuality(it) },
+        )
+        sectionDivider()
+        qualitySection(
+            title = "Download quality",
+            note = "Used when keeping songs, albums and playlists offline.",
+            selected = viewModel.downloadQuality,
+            onSelect = { viewModel.selectDownloadQuality(it) },
+        )
+        sectionDivider()
+        item { SectionHeader("Offline") }
+        item {
+            TwoLineRow(
+                title = buildString {
+                    val count = viewModel.offlineTrackIds.size
+                    append(if (count == 1) "1 song" else "$count songs")
+                    append(" • ${OfflineManager.formatBytes(viewModel.offlineSizeBytes)}")
+                    append(if (viewModel.downloadsOnSdCard) " • SD card" else " • phone storage")
+                },
+                subtitle = null,
+                onClick = onOpenDownloads,
+                showDivider = false,
+            )
+        }
+        sectionDivider()
+        item { SectionHeader("Account") }
+        item {
+            TextMMD(
+                text = "Logged in to Tidal" +
+                    (viewModel.sessionCountry?.let { " ($it)" } ?: ""),
+                fontSize = 16.sp,
+            )
+        }
+        item {
+            Column {
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedButtonMMD(onClick = { viewModel.logout() }) {
+                    TextMMD(text = "Log out")
+                }
+            }
+        }
+        sectionDivider()
+        item {
+            TextMMD(
+                text = "MonoMusic streams from the Tidal API. Playback requires an active " +
+                    "Tidal subscription. Nothing is tracked; your login stays on this phone.",
+                fontSize = 13.sp,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.qualitySection(
+    title: String,
+    note: String,
+    selected: AudioQuality,
+    onSelect: (AudioQuality) -> Unit,
+) {
+    item { SectionHeader(title) }
+    AudioQuality.entries.forEach { quality ->
+        item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                    ) { viewModel.selectAudioQuality(quality) }
+                    ) { onSelect(quality) }
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButtonMMD(
-                    selected = viewModel.audioQuality == quality,
-                    onClick = { viewModel.selectAudioQuality(quality) },
+                    selected = selected == quality,
+                    onClick = { onSelect(quality) },
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 TextMMD(text = quality.label, fontSize = 16.sp)
             }
         }
-        TextMMD(
-            text = "Takes effect from the next song. Higher quality uses more data.",
-            fontSize = 13.sp,
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-        DashedDivider(thickness = 1.dp)
-        Spacer(modifier = Modifier.height(24.dp))
-
-        TextMMD(text = "Offline", fontSize = 22.sp, fontWeight = FontWeight.Black)
-        Spacer(modifier = Modifier.height(8.dp))
-        TwoLineRow(
-            title = buildString {
-                val count = viewModel.offlineTrackIds.size
-                append(if (count == 1) "1 song" else "$count songs")
-                append(" • ${OfflineManager.formatBytes(viewModel.downloadsSizeBytes())}")
-                append(if (viewModel.downloadsOnSdCard) " • SD card" else " • phone storage")
-            },
-            subtitle = null,
-            onClick = onOpenDownloads,
-            showDivider = false,
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-        DashedDivider(thickness = 1.dp)
-        Spacer(modifier = Modifier.height(24.dp))
-
-        TextMMD(text = "Account", fontSize = 22.sp, fontWeight = FontWeight.Black)
-        Spacer(modifier = Modifier.height(8.dp))
-        TextMMD(
-            text = "Logged in to Tidal" +
-                (viewModel.sessionCountry?.let { " ($it)" } ?: ""),
-            fontSize = 16.sp,
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedButtonMMD(onClick = { viewModel.logout() }) {
-            TextMMD(text = "Log out")
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        DashedDivider(thickness = 1.dp)
-        Spacer(modifier = Modifier.height(24.dp))
-
-        TextMMD(
-            text = "MonoMusic streams from the Tidal API. Playback requires an active " +
-                "Tidal subscription. Nothing is tracked; your login stays on this phone.",
-            fontSize = 13.sp,
-        )
-    } }
     }
+    item { TextMMD(text = note, fontSize = 13.sp) }
+}
+
+private fun LazyListScope.sectionDivider() {
+    item {
+        Column {
+            Spacer(modifier = Modifier.height(24.dp))
+            DashedDivider(thickness = 1.dp)
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    TextMMD(
+        text = title,
+        fontSize = 22.sp,
+        fontWeight = FontWeight.Black,
+        modifier = Modifier.padding(bottom = 8.dp),
+    )
 }

@@ -39,8 +39,6 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
     val state = viewModel.albumTracks
     val tracks = state.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
-    var showDownloadDialog by remember { mutableStateOf(false) }
-    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val isFavorite = album.id in viewModel.favoriteAlbumIds
     val isPinned = viewModel.isPinned("album", album.id.toString())
 
@@ -75,8 +73,20 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     IconButton(onClick = {
-                        if (isPinned) viewModel.unpinCollection("album", album.id.toString())
-                        else showDownloadDialog = true
+                        if (isPinned) {
+                            viewModel.unpinCollection("album", album.id.toString())
+                        } else {
+                            viewModel.pinCollection(
+                                OfflineCollection(
+                                    type = "album",
+                                    id = album.id.toString(),
+                                    title = album.title,
+                                    subtitle = album.artistName.takeIf { it.isNotBlank() },
+                                    quality = viewModel.downloadQuality,
+                                    tracks = tracks,
+                                )
+                            )
+                        }
                     }) {
                         Icon(
                             imageVector = if (isPinned) Icons.Outlined.DownloadDone
@@ -104,50 +114,27 @@ fun AlbumDetailsScreen(viewModel: MonoMusicViewModel) {
 
             itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
                 val isTrackFavorite = track.id in viewModel.favoriteTrackIds
+                val trackPinned = viewModel.isPinned("track", track.id.toString())
                 TrackRow(
                     track = track,
                     isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
                     isDownloaded = track.id in viewModel.offlineTrackIds,
                     onClick = { viewModel.playTracks(tracks, index) },
                     showTrackNumber = true,
-                    menuEntries = listOf(
-                        RowMenuEntry(
-                            if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
-                        ) { viewModel.toggleFavoriteTrack(track) },
-                        RowMenuEntry("Add to playlist") { pickerTrack = track },
-                        keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
-                    ),
+                    menuEntries = remember(track, isTrackFavorite, trackPinned) {
+                        listOf(
+                            RowMenuEntry(
+                                if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
+                            ) { viewModel.toggleFavoriteTrack(track) },
+                            RowMenuEntry("Add to playlist") { pickerTrack = track },
+                            keepOfflineMenuEntry(viewModel, track),
+                        )
+                    },
                     showDivider = index != tracks.lastIndex,
                 )
             }
         }
     }
-
-    if (showDownloadDialog) {
-        DownloadQualityDialog(
-            totalSeconds = tracks.sumOf { it.durationSec.toLong() },
-            onPick = { quality ->
-                viewModel.pinCollection(
-                    OfflineCollection(
-                        type = "album",
-                        id = album.id.toString(),
-                        title = album.title,
-                        subtitle = album.artistName.takeIf { it.isNotBlank() },
-                        quality = quality,
-                        tracks = tracks,
-                    )
-                )
-                showDownloadDialog = false
-            },
-            onDismiss = { showDownloadDialog = false },
-        )
-    }
-
-    TrackDownloadDialog(
-        track = downloadTrack,
-        viewModel = viewModel,
-        onDismiss = { downloadTrack = null },
-    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(

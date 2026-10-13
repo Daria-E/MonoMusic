@@ -80,6 +80,7 @@ class OfflineManager(
     val collections = MutableStateFlow<List<OfflineCollection>>(emptyList())
     val downloadedTrackIds = MutableStateFlow<Set<Long>>(emptySet())
     val pendingCount = MutableStateFlow(0)
+    val sizeBytes = MutableStateFlow(0L)
 
     // trackId -> (fileName, quality); volatile snapshot for the playback thread
     @Volatile
@@ -102,8 +103,6 @@ class OfflineManager(
     }
 
     fun qualityFor(trackId: Long): AudioQuality? = fileEntries[trackId]?.second
-
-    fun sizeBytes(): Long = audioDir.listFiles()?.sumOf { it.length() } ?: 0L
 
     fun pin(collection: OfflineCollection) {
         scope.launch {
@@ -199,6 +198,9 @@ class OfflineManager(
         val downloaded = pinnedIds.filter { fileFor(it) != null }.toSet()
         downloadedTrackIds.value = downloaded
         pendingCount.value = pinnedIds.size - downloaded.size
+        // Always runs on the IO scope, so the directory walk stays off the
+        // main thread; the UI reads the flow instead of listing files itself.
+        sizeBytes.value = audioDir.listFiles()?.sumOf { it.length() } ?: 0L
     }
 
     // ---- persistence (org.json, same as the API layer) ----
@@ -226,9 +228,9 @@ class OfflineManager(
                             id = t.optLong("id"),
                             title = t.optString("title"),
                             artistName = t.optString("artist"),
-                            artistId = null,
+                            artistId = t.optLong("artistId").takeIf { it > 0 },
                             albumTitle = t.optString("album").takeIf { it.isNotEmpty() },
-                            albumId = null,
+                            albumId = t.optLong("albumId").takeIf { it > 0 },
                             durationSec = t.optInt("duration"),
                             trackNumber = t.optInt("trackNumber"),
                             volumeNumber = t.optInt("volumeNumber", 1),
@@ -270,7 +272,9 @@ class OfflineManager(
                                         .put("id", t.id)
                                         .put("title", t.title)
                                         .put("artist", t.artistName)
+                                        .putOpt("artistId", t.artistId)
                                         .put("album", t.albumTitle ?: "")
+                                        .putOpt("albumId", t.albumId)
                                         .put("duration", t.durationSec)
                                         .put("trackNumber", t.trackNumber)
                                         .put("volumeNumber", t.volumeNumber)

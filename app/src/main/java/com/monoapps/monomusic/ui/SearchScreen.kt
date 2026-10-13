@@ -29,11 +29,12 @@ import com.mudita.mmd.components.tabs.PrimaryTabRowMMD
 import com.mudita.mmd.components.tabs.TabMMD
 
 // Icon tabs: four text labels wrap mid-word on the 480px-wide screen.
+// Same order as the nav bar tabs.
 private val searchTabs = listOf(
+    "Playlists" to Icons.Outlined.LibraryMusic,
+    "Artists" to Icons.Outlined.PersonOutline,
     "Songs" to Icons.AutoMirrored.Outlined.QueueMusic,
     "Albums" to Icons.Outlined.Album,
-    "Artists" to Icons.Outlined.PersonOutline,
-    "Playlists" to Icons.Outlined.LibraryMusic,
 )
 
 @androidx.compose.runtime.Composable
@@ -44,9 +45,9 @@ fun SearchScreen(
     onOpenArtist: (TidalArtist) -> Unit,
     onOpenPlaylist: (TidalPlaylist) -> Unit,
 ) {
-    var tab by remember { mutableIntStateOf(0) }
+    // Songs is the most common search, so it starts selected.
+    var tab by remember { mutableIntStateOf(2) }
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
-    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val results = viewModel.searchResults
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -72,31 +73,24 @@ fun SearchScreen(
                 )
 
                 else -> when (tab) {
-                    0 -> SearchTrackResults(
+                    0 -> SearchList(results.playlists, { it.uuid }, "No playlists found.") { playlist, last ->
+                        PlaylistRow(playlist, onClick = { onOpenPlaylist(playlist) }, showDivider = !last)
+                    }
+                    1 -> SearchList(results.artists, { it.id }, "No artists found.") { artist, last ->
+                        ArtistRow(artist, onClick = { onOpenArtist(artist) }, showDivider = !last)
+                    }
+                    2 -> SearchTrackResults(
                         viewModel,
                         results.tracks,
                         onAddToPlaylist = { pickerTrack = it },
-                        onKeepOffline = { downloadTrack = it },
                     )
-                    1 -> SearchList(results.albums, { it.id }, "No albums found.") { album, last ->
+                    else -> SearchList(results.albums, { it.id }, "No albums found.") { album, last ->
                         AlbumRow(album, onClick = { onOpenAlbum(album) }, showDivider = !last)
-                    }
-                    2 -> SearchList(results.artists, { it.id }, "No artists found.") { artist, last ->
-                        ArtistRow(artist, onClick = { onOpenArtist(artist) }, showDivider = !last)
-                    }
-                    else -> SearchList(results.playlists, { it.uuid }, "No playlists found.") { playlist, last ->
-                        PlaylistRow(playlist, onClick = { onOpenPlaylist(playlist) }, showDivider = !last)
                     }
                 }
             }
         }
     }
-
-    TrackDownloadDialog(
-        track = downloadTrack,
-        viewModel = viewModel,
-        onDismiss = { downloadTrack = null },
-    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(
@@ -115,7 +109,6 @@ private fun SearchTrackResults(
     viewModel: MonoMusicViewModel,
     tracks: List<TidalTrack>,
     onAddToPlaylist: (TidalTrack) -> Unit,
-    onKeepOffline: (TidalTrack) -> Unit,
 ) {
     if (tracks.isEmpty()) {
         CenteredMessage("No songs found.")
@@ -124,17 +117,20 @@ private fun SearchTrackResults(
     LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {
         itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
             val isFavorite = track.id in viewModel.favoriteTrackIds
+            val trackPinned = viewModel.isPinned("track", track.id.toString())
             TrackRow(
                 track = track,
                 isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
                 onClick = { viewModel.playTracks(tracks, index) },
-                menuEntries = listOf(
-                    RowMenuEntry(
-                        if (isFavorite) "Remove from favorites" else "Add to favorites"
-                    ) { viewModel.toggleFavoriteTrack(track) },
-                    RowMenuEntry("Add to playlist") { onAddToPlaylist(track) },
-                    keepOfflineMenuEntry(viewModel, track) { onKeepOffline(it) },
-                ),
+                menuEntries = remember(track, isFavorite, trackPinned) {
+                    listOf(
+                        RowMenuEntry(
+                            if (isFavorite) "Remove from favorites" else "Add to favorites"
+                        ) { viewModel.toggleFavoriteTrack(track) },
+                        RowMenuEntry("Add to playlist") { onAddToPlaylist(track) },
+                        keepOfflineMenuEntry(viewModel, track),
+                    )
+                },
                 showDivider = index != tracks.lastIndex,
             )
         }

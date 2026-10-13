@@ -154,7 +154,7 @@ class PlaybackService : MediaSessionService() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "MonoMusic playback",
+            "Music playback",
             NotificationManager.IMPORTANCE_LOW,
         ).apply { description = "Music playback controls" }
         val notificationManager =

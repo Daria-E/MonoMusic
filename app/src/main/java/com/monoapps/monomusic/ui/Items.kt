@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.monoapps.monomusic.MonoMusicViewModel
 import com.monoapps.monomusic.tidal.TidalAlbum
 import com.monoapps.monomusic.tidal.TidalArtist
 import com.monoapps.monomusic.tidal.TidalPlaylist
@@ -54,6 +55,16 @@ fun formatDuration(totalSeconds: Long): String {
 
 /** A long-press context menu entry on a list row. */
 data class RowMenuEntry(val label: String, val action: () -> Unit)
+
+/** A ready-made long-press menu entry for keeping a single song offline. */
+fun keepOfflineMenuEntry(viewModel: MonoMusicViewModel, track: TidalTrack): RowMenuEntry {
+    val id = track.id.toString()
+    return if (viewModel.isPinned("track", id)) {
+        RowMenuEntry("Remove offline copy") { viewModel.unpinCollection("track", id) }
+    } else {
+        RowMenuEntry("Keep offline") { viewModel.pinTrack(track) }
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

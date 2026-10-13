@@ -2,6 +2,7 @@ package com.monoapps.monomusic
 
 import android.app.Application
 import android.content.ComponentName
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,6 +15,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.monoapps.monomusic.offline.OfflineCollection
+import com.monoapps.monomusic.offline.OfflineManager
 import com.monoapps.monomusic.tidal.AudioQuality
 import com.monoapps.monomusic.tidal.TidalAuthException
 import com.monoapps.monomusic.tidal.TidalAlbum
@@ -74,6 +76,72 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var favoriteArtistIds by mutableStateOf(emptySet<Long>())
         private set
+
+    // Track lists of liked albums, fetched once per album and persisted,
+    // so a liked album's songs show up in the Songs tab.
+    private var likedAlbumTracks by mutableStateOf(emptyMap<Long, List<TidalTrack>>())
+
+    // The library tabs show favorites merged with everything derived from
+    // offline downloads and liked albums, deduplicated by id.
+
+    /** Songs tab: favorite tracks, downloaded tracks, and liked albums' tracks. */
+    val libraryTracks by derivedStateOf {
+        val seen = mutableSetOf<Long>()
+        (favoriteTracks.data.orEmpty() +
+            offlineCollections.flatMap { it.tracks } +
+            likedAlbumTracks.values.flatten())
+            .filter { seen.add(it.id) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+    }
+
+    /** Albums tab: favorite albums plus albums of downloaded albums/songs. */
+    val libraryAlbums by derivedStateOf {
+        val seen = mutableSetOf<Long>()
+        val favorites = favoriteAlbums.data.orEmpty().filter { seen.add(it.id) }
+        val pinnedAlbums = offlineCollections.filter { it.type == "album" }.mapNotNull { c ->
+            val id = c.id.toLongOrNull() ?: return@mapNotNull null
+            if (!seen.add(id)) return@mapNotNull null
+            TidalAlbum(
+                id = id,
+                title = c.title,
+                artistName = c.subtitle.orEmpty(),
+                artistId = c.tracks.firstNotNullOfOrNull { it.artistId },
+                numberOfTracks = c.tracks.size,
+                releaseYear = null,
+                audioQuality = null,
+            )
+        }
+        val fromPinnedTracks = offlineCollections.filter { it.type == "track" }
+            .flatMap { it.tracks }
+            .mapNotNull { t ->
+                val id = t.albumId ?: return@mapNotNull null
+                val title = t.albumTitle ?: return@mapNotNull null
+                if (!seen.add(id)) return@mapNotNull null
+                TidalAlbum(id, title, t.artistName, t.artistId, 0, null, null)
+            }
+        (favorites + pinnedAlbums + fromPinnedTracks)
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+    }
+
+    /** Artists tab: favorite artists plus artists of liked/downloaded albums and songs. */
+    val libraryArtists by derivedStateOf {
+        val seen = mutableSetOf<Long>()
+        val favorites = favoriteArtists.data.orEmpty().filter { seen.add(it.id) }
+        val fromAlbums = favoriteAlbums.data.orEmpty().mapNotNull { a ->
+            val id = a.artistId ?: return@mapNotNull null
+            if (a.artistName.isBlank() || !seen.add(id)) null else TidalArtist(id, a.artistName)
+        }
+        // Playlist downloads are excluded: a playlist's many one-off artists
+        // would flood the tab.
+        val fromPinned = offlineCollections.filterNot { it.type == "playlist" }
+            .flatMap { it.tracks }
+            .mapNotNull { t ->
+                val id = t.artistId ?: return@mapNotNull null
+                if (t.artistName.isBlank() || !seen.add(id)) null else TidalArtist(id, t.artistName)
+            }
+        (favorites + fromAlbums + fromPinned)
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
 
     // ---- details ----
 
@@ -139,6 +207,9 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     var audioQuality by mutableStateOf(session.audioQuality)
         private set
 
+    var downloadQuality by mutableStateOf(session.downloadQuality)
+        private set
+
     val sessionCountry: String? get() = session.countryCode
 
     // ---- offline ----
@@ -149,17 +220,35 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var offlinePendingCount by mutableStateOf(0)
         private set
+    var offlineSizeBytes by mutableStateOf(0L)
+        private set
 
     val downloadsOnSdCard: Boolean get() = app.offlineManager.onRemovableStorage
-    fun downloadsSizeBytes(): Long = app.offlineManager.sizeBytes()
 
     fun isPinned(type: String, id: String): Boolean =
         offlineCollections.any { it.key == "$type:$id" }
 
     fun pinCollection(collection: OfflineCollection) {
         app.offlineManager.pin(collection)
-        uiMessage = "Downloading ${collection.title}"
+        val estimate = OfflineManager.formatBytes(
+            OfflineManager.estimatedBytes(
+                collection.tracks.sumOf { it.durationSec.toLong() },
+                collection.quality,
+            )
+        )
+        uiMessage = "Downloading ${collection.title} (about $estimate)"
     }
+
+    fun pinTrack(track: TidalTrack) = pinCollection(
+        OfflineCollection(
+            type = "track",
+            id = track.id.toString(),
+            title = track.title,
+            subtitle = track.artistName.takeIf { it.isNotBlank() },
+            quality = downloadQuality,
+            tracks = listOf(track),
+        )
+    )
 
     fun unpinCollection(type: String, id: String) = app.offlineManager.unpin(type, id)
 
@@ -222,10 +311,35 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             app.offlineManager.pendingCount.collect { offlinePendingCount = it }
         }
+        viewModelScope.launch {
+            app.offlineManager.sizeBytes.collect { offlineSizeBytes = it }
+        }
 
         if (session.isLoggedIn) {
             viewModelScope.launch {
                 runCatching { client.loadSessionInfo() }
+            }
+            // Show the cached library instantly; the parallel network refresh
+            // below overwrites it (the data == null guards cover the race
+            // where a fetch finishes before the disk read).
+            viewModelScope.launch {
+                val cached = app.libraryCache.load()
+                cached.tracks?.takeIf { favoriteTracks.data == null }?.let { tracks ->
+                    favoriteTracks = favoriteTracks.copy(data = tracks)
+                    favoriteTrackIds = tracks.map { it.id }.toSet()
+                }
+                cached.albums?.takeIf { favoriteAlbums.data == null }?.let { albums ->
+                    favoriteAlbums = favoriteAlbums.copy(data = albums)
+                    favoriteAlbumIds = albums.map { it.id }.toSet()
+                }
+                cached.artists?.takeIf { favoriteArtists.data == null }?.let { artists ->
+                    favoriteArtists = favoriteArtists.copy(data = artists)
+                    favoriteArtistIds = artists.map { it.id }.toSet()
+                }
+                cached.playlists?.takeIf { playlists.data == null }?.let {
+                    playlists = playlists.copy(data = it)
+                }
+                likedAlbumTracks = app.libraryCache.loadAlbumTracks()
             }
             loadLibrary()
         }
@@ -264,6 +378,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         controller?.stop()
         controller?.clearMediaItems()
         session.clear()
+        viewModelScope.launch { app.libraryCache.clear() }
         favoriteTracks = Loadable()
         favoriteAlbums = Loadable()
         favoriteArtists = Loadable()
@@ -271,6 +386,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         favoriteTrackIds = emptySet()
         favoriteAlbumIds = emptySet()
         favoriteArtistIds = emptySet()
+        likedAlbumTracks = emptyMap()
         searchResults = null
         searchQuery = ""
         currentTrack = null
@@ -281,6 +397,11 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectAudioQuality(quality: AudioQuality) {
         session.audioQuality = quality
         audioQuality = quality
+    }
+
+    fun selectDownloadQuality(quality: AudioQuality) {
+        session.downloadQuality = quality
+        downloadQuality = quality
     }
 
     // ---- library loading ----
@@ -301,12 +422,14 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     fun loadFavoriteTracks() {
         viewModelScope.launch {
             favoriteTracks = favoriteTracks.copy(isLoading = true, error = null)
-            favoriteTracks = try {
+            try {
                 val tracks = client.favoriteTracks()
                 favoriteTrackIds = tracks.map { it.id }.toSet()
-                Loadable(tracks)
+                favoriteTracks = Loadable(tracks)
+                app.libraryCache.saveTracks(tracks)
             } catch (e: Exception) {
-                Loadable(favoriteTracks.data, error = loadError(e, "Could not load songs"))
+                favoriteTracks =
+                    Loadable(favoriteTracks.data, error = loadError(e, "Could not load songs"))
             }
         }
     }
@@ -314,12 +437,15 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     fun loadFavoriteAlbums() {
         viewModelScope.launch {
             favoriteAlbums = favoriteAlbums.copy(isLoading = true, error = null)
-            favoriteAlbums = try {
+            try {
                 val albums = client.favoriteAlbums()
                 favoriteAlbumIds = albums.map { it.id }.toSet()
-                Loadable(albums)
+                favoriteAlbums = Loadable(albums)
+                app.libraryCache.saveAlbums(albums)
+                syncLikedAlbumTracks(albums)
             } catch (e: Exception) {
-                Loadable(favoriteAlbums.data, error = loadError(e, "Could not load albums"))
+                favoriteAlbums =
+                    Loadable(favoriteAlbums.data, error = loadError(e, "Could not load albums"))
             }
         }
     }
@@ -327,12 +453,14 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     fun loadFavoriteArtists() {
         viewModelScope.launch {
             favoriteArtists = favoriteArtists.copy(isLoading = true, error = null)
-            favoriteArtists = try {
+            try {
                 val artists = client.favoriteArtists()
                 favoriteArtistIds = artists.map { it.id }.toSet()
-                Loadable(artists)
+                favoriteArtists = Loadable(artists)
+                app.libraryCache.saveArtists(artists)
             } catch (e: Exception) {
-                Loadable(favoriteArtists.data, error = loadError(e, "Could not load artists"))
+                favoriteArtists =
+                    Loadable(favoriteArtists.data, error = loadError(e, "Could not load artists"))
             }
         }
     }
@@ -340,10 +468,13 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     fun loadPlaylists() {
         viewModelScope.launch {
             playlists = playlists.copy(isLoading = true, error = null)
-            playlists = try {
-                Loadable(client.userPlaylists())
+            try {
+                val lists = client.userPlaylists()
+                playlists = Loadable(lists)
+                app.libraryCache.savePlaylists(lists)
             } catch (e: Exception) {
-                Loadable(playlists.data, error = loadError(e, "Could not load playlists"))
+                playlists =
+                    Loadable(playlists.data, error = loadError(e, "Could not load playlists"))
             }
         }
     }
@@ -462,7 +593,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             favoriteTracks = favoriteTracks.copy(
                 data = if (nowFavorite) {
                     (list.filterNot { it.id == track.id } + track)
-                        .sortedBy { it.title.lowercase() }
+                        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
                 } else {
                     list.filterNot { it.id == track.id }
                 }
@@ -475,13 +606,37 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         applyAlbumFavorite(album, nowFavorite = !isFavorite)
         viewModelScope.launch {
             try {
-                if (isFavorite) client.removeFavoriteAlbum(album.id)
-                else client.addFavoriteAlbum(album.id)
+                if (isFavorite) {
+                    client.removeFavoriteAlbum(album.id)
+                    setLikedAlbumTracks(likedAlbumTracks - album.id)
+                } else {
+                    client.addFavoriteAlbum(album.id)
+                    val tracks = albumTracksCache[album.id]
+                        ?: runCatching { client.albumTracks(album.id) }.getOrNull()
+                    tracks?.let { setLikedAlbumTracks(likedAlbumTracks + (album.id to it)) }
+                }
             } catch (e: Exception) {
                 applyAlbumFavorite(album, nowFavorite = isFavorite)
                 uiMessage = e.message ?: "Could not update favorites"
             }
         }
+    }
+
+    /** Fetches track lists for albums liked elsewhere and drops unliked ones. */
+    private suspend fun syncLikedAlbumTracks(albums: List<TidalAlbum>) {
+        val ids = albums.map { it.id }.toSet()
+        var map = likedAlbumTracks.filterKeys { it in ids }
+        albums.filter { it.id !in map }.forEach { album ->
+            runCatching { client.albumTracks(album.id) }.getOrNull()?.let {
+                map = map + (album.id to it)
+            }
+        }
+        if (map != likedAlbumTracks) setLikedAlbumTracks(map)
+    }
+
+    private suspend fun setLikedAlbumTracks(map: Map<Long, List<TidalTrack>>) {
+        likedAlbumTracks = map
+        app.libraryCache.saveAlbumTracks(map)
     }
 
     private fun applyAlbumFavorite(album: TidalAlbum, nowFavorite: Boolean) {
@@ -491,7 +646,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             favoriteAlbums = favoriteAlbums.copy(
                 data = if (nowFavorite) {
                     (list.filterNot { it.id == album.id } + album)
-                        .sortedBy { it.title.lowercase() }
+                        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
                 } else {
                     list.filterNot { it.id == album.id }
                 }
@@ -520,7 +675,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             favoriteArtists = favoriteArtists.copy(
                 data = if (nowFavorite) {
                     (list.filterNot { it.id == artist.id } + artist)
-                        .sortedBy { it.name.lowercase() }
+                        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 } else {
                     list.filterNot { it.id == artist.id }
                 }
@@ -533,23 +688,37 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
     fun createPlaylist(name: String) {
         viewModelScope.launch {
             try {
-                client.createPlaylist(name)
+                val created = client.createPlaylist(name)
                 uiMessage = "Playlist created"
-                loadPlaylists()
+                if (created != null) {
+                    playlists = Loadable(playlists.data.orEmpty() + created)
+                } else {
+                    loadPlaylists()
+                }
             } catch (e: Exception) {
                 uiMessage = e.message ?: "Could not create playlist"
             }
         }
     }
 
+    // Playlist mutations patch local state instead of refetching: a refetch
+    // costs an etag GET plus two paged list fetches and makes every edit
+    // feel slow, same reasoning as the favorites edits above.
+
     fun addToPlaylist(track: TidalTrack, playlist: TidalPlaylist) {
         viewModelScope.launch {
             try {
                 client.addTrackToPlaylist(playlist.uuid, track.id)
                 uiMessage = "Added to ${playlist.title}"
-                playlistTracksCache.remove(playlist.uuid)
-                loadPlaylists()
-                if (selectedPlaylist?.uuid == playlist.uuid) openPlaylist(playlist)
+                // The API skips duplicates, so only append a genuinely new track.
+                val cached = playlistTracksCache[playlist.uuid]
+                if (cached == null || cached.none { it.id == track.id }) {
+                    cached?.let { playlistTracksCache[playlist.uuid] = it + track }
+                    if (selectedPlaylist?.uuid == playlist.uuid) {
+                        playlistTracks.data?.let { playlistTracks = Loadable(it + track) }
+                    }
+                    adjustPlaylistCount(playlist.uuid, +1)
+                }
             } catch (e: Exception) {
                 uiMessage = e.message ?: "Could not add to playlist"
             }
@@ -561,9 +730,12 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 client.removePlaylistItem(playlist.uuid, index)
-                playlistTracksCache.remove(playlist.uuid)
-                openPlaylist(playlist)
-                loadPlaylists()
+                playlistTracks.data?.takeIf { index in it.indices }?.let { list ->
+                    val updated = list.toMutableList().apply { removeAt(index) }
+                    playlistTracks = Loadable(updated)
+                    playlistTracksCache[playlist.uuid] = updated
+                }
+                adjustPlaylistCount(playlist.uuid, -1)
             } catch (e: Exception) {
                 uiMessage = e.message ?: "Could not remove song"
             }
@@ -576,10 +748,26 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
                 client.removePlaylistFromCollection(playlist.uuid)
                 uiMessage = "Playlist removed"
                 playlistTracksCache.remove(playlist.uuid)
-                loadPlaylists()
+                playlists.data?.let { list ->
+                    playlists = playlists.copy(data = list.filterNot { it.uuid == playlist.uuid })
+                }
             } catch (e: Exception) {
                 uiMessage = e.message ?: "Could not remove playlist"
             }
+        }
+    }
+
+    private fun adjustPlaylistCount(uuid: String, delta: Int) {
+        playlists.data?.let { list ->
+            playlists = playlists.copy(
+                data = list.map {
+                    if (it.uuid == uuid) {
+                        it.copy(numberOfTracks = (it.numberOfTracks + delta).coerceAtLeast(0))
+                    } else {
+                        it
+                    }
+                }
+            )
         }
     }
 
@@ -590,9 +778,15 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         if (tracks.isEmpty()) return
         queueTracks = tracks
         val items = tracks.map { it.toMediaItem() }
-        val start = if (shuffled) tracks.indices.random() else startIndex
         player.shuffleModeEnabled = shuffled
-        player.setMediaItems(items, start, 0L)
+        if (shuffled) {
+            // Start at the head of the player's shuffle order (itself random).
+            // Jumping to a random index instead lands at a random position
+            // WITHIN that order, leaving few or no songs to skip to.
+            player.setMediaItems(items)
+        } else {
+            player.setMediaItems(items, startIndex, 0L)
+        }
         player.prepare()
         player.play()
     }

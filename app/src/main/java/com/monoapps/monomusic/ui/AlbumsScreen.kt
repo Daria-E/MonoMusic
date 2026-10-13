@@ -14,17 +14,18 @@ import com.mudita.mmd.components.lazy.LazyColumnMMD
 @Composable
 fun AlbumsScreen(viewModel: MonoMusicViewModel, onOpenAlbum: (TidalAlbum) -> Unit) {
     val state = viewModel.favoriteAlbums
-    val albums = state.data.orEmpty()
+    val albums = viewModel.libraryAlbums
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
-            state.data == null && state.isLoading -> CenteredMessage("Loading albums…")
+            albums.isEmpty() && state.data == null && state.isLoading ->
+                CenteredMessage("Loading albums…")
 
-            state.data == null && state.error != null ->
+            albums.isEmpty() && state.data == null && state.error != null ->
                 CenteredError(state.error) { viewModel.loadFavoriteAlbums() }
 
             albums.isEmpty() -> CenteredMessage(
-                "No favorite albums yet.\n\nSearch Tidal and favorite an album to see it here."
+                "No albums yet.\n\nFavorite an album or keep one offline to see it here."
             )
 
             else -> LazyColumnMMD(contentPadding = PaddingValues(16.dp)) {

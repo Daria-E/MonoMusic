@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     kotlin("android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -22,7 +23,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 matters on this device: it strips the unused bulk of
+            // material-icons-extended and friends, shrinking the APK and
+            // the dex the slow SoC has to load.
+            isMinifyEnabled = true
+            isShrinkResources = true
             // Debug-signed so the release APK is directly sideloadable
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -44,10 +49,6 @@ android {
 
     buildFeatures {
         compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.3"
     }
 
     packagingOptions {

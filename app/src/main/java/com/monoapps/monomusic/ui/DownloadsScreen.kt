@@ -52,9 +52,9 @@ fun DownloadsScreen(viewModel: MonoMusicViewModel) {
             TextMMD(
                 text = if (pending > 0) {
                     "Downloading, $pending songs left • " +
-                        "${OfflineManager.formatBytes(viewModel.downloadsSizeBytes())} on $location"
+                        "${OfflineManager.formatBytes(viewModel.offlineSizeBytes)} on $location"
                 } else {
-                    "${OfflineManager.formatBytes(viewModel.downloadsSizeBytes())} on $location"
+                    "${OfflineManager.formatBytes(viewModel.offlineSizeBytes)} on $location"
                 },
                 fontSize = 14.sp,
             )

@@ -42,8 +42,6 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
     val tracks = state.data.orEmpty()
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
     var showMenu by remember { mutableStateOf(false) }
-    var showDownloadDialog by remember { mutableStateOf(false) }
-    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val isPinned = viewModel.isPinned("playlist", playlist.uuid)
 
     when {
@@ -78,8 +76,20 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
                     Spacer(modifier = Modifier.weight(1f))
                     if (tracks.isNotEmpty()) {
                         IconButton(onClick = {
-                            if (isPinned) viewModel.unpinCollection("playlist", playlist.uuid)
-                            else showDownloadDialog = true
+                            if (isPinned) {
+                                viewModel.unpinCollection("playlist", playlist.uuid)
+                            } else {
+                                viewModel.pinCollection(
+                                    OfflineCollection(
+                                        type = "playlist",
+                                        id = playlist.uuid,
+                                        title = playlist.title,
+                                        subtitle = playlist.creator?.let { "By $it" },
+                                        quality = viewModel.downloadQuality,
+                                        tracks = tracks,
+                                    )
+                                )
+                            }
                         }) {
                             Icon(
                                 imageVector = if (isPinned) Icons.Outlined.DownloadDone
@@ -131,52 +141,29 @@ fun PlaylistDetailsScreen(viewModel: MonoMusicViewModel, onPlaylistRemoved: () -
 
             itemsIndexed(tracks, key = { index, track -> "$index-${track.id}" }) { index, track ->
                 val isTrackFavorite = track.id in viewModel.favoriteTrackIds
+                val trackPinned = viewModel.isPinned("track", track.id.toString())
                 TrackRow(
                     track = track,
                     isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
                     isDownloaded = track.id in viewModel.offlineTrackIds,
                     onClick = { viewModel.playTracks(tracks, index) },
-                    menuEntries = listOf(
-                        RowMenuEntry(
-                            if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
-                        ) { viewModel.toggleFavoriteTrack(track) },
-                        RowMenuEntry("Add to playlist") { pickerTrack = track },
-                        keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
-                        RowMenuEntry("Remove from this playlist") {
-                            viewModel.removeFromPlaylist(index)
-                        },
-                    ),
+                    menuEntries = remember(track, isTrackFavorite, trackPinned, index) {
+                        listOf(
+                            RowMenuEntry(
+                                if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
+                            ) { viewModel.toggleFavoriteTrack(track) },
+                            RowMenuEntry("Add to playlist") { pickerTrack = track },
+                            keepOfflineMenuEntry(viewModel, track),
+                            RowMenuEntry("Remove from this playlist") {
+                                viewModel.removeFromPlaylist(index)
+                            },
+                        )
+                    },
                     showDivider = index != tracks.lastIndex,
                 )
             }
         }
     }
-
-    if (showDownloadDialog) {
-        DownloadQualityDialog(
-            totalSeconds = tracks.sumOf { it.durationSec.toLong() },
-            onPick = { quality ->
-                viewModel.pinCollection(
-                    OfflineCollection(
-                        type = "playlist",
-                        id = playlist.uuid,
-                        title = playlist.title,
-                        subtitle = playlist.creator?.let { "By $it" },
-                        quality = quality,
-                        tracks = tracks,
-                    )
-                )
-                showDownloadDialog = false
-            },
-            onDismiss = { showDownloadDialog = false },
-        )
-    }
-
-    TrackDownloadDialog(
-        track = downloadTrack,
-        viewModel = viewModel,
-        onDismiss = { downloadTrack = null },
-    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(

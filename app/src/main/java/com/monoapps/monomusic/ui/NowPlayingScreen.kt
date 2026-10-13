@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import com.monoapps.monomusic.MonoMusicViewModel
+import com.monoapps.monomusic.tidal.TidalTrack
 import com.mudita.mmd.components.slider.SliderMMD
 import com.mudita.mmd.components.text.TextMMD
 import kotlinx.coroutines.delay
@@ -53,19 +54,6 @@ fun NowPlayingScreen(viewModel: MonoMusicViewModel) {
         return
     }
 
-    var positionMs by remember { mutableLongStateOf(0L) }
-    var dragPositionMs by remember { mutableStateOf<Long?>(null) }
-
-    LaunchedEffect(viewModel.isPlaying, track.id) {
-        while (true) {
-            if (dragPositionMs == null) positionMs = viewModel.currentPositionMs()
-            delay(1000)
-        }
-    }
-
-    val durationMs = viewModel.durationMs.takeIf { it > 0 }
-        ?: (track.durationSec * 1000L).takeIf { it > 0 }
-        ?: 0L
     val isFavorite = track.id in viewModel.favoriteTrackIds
 
     Column(
@@ -110,23 +98,7 @@ fun NowPlayingScreen(viewModel: MonoMusicViewModel) {
 
         Spacer(modifier = Modifier.weight(1f))
 
-        if (durationMs > 0) {
-            SliderMMD(
-                value = (dragPositionMs ?: positionMs).toFloat().coerceIn(0f, durationMs.toFloat()),
-                onValueChange = { dragPositionMs = it.toLong() },
-                onValueChangeFinished = {
-                    dragPositionMs?.let { viewModel.seekTo(it) }
-                    dragPositionMs = null
-                },
-                valueRange = 0f..durationMs.toFloat(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextMMD(text = formatDuration((dragPositionMs ?: positionMs) / 1000), fontSize = 14.sp)
-                Spacer(modifier = Modifier.weight(1f))
-                TextMMD(text = formatDuration(durationMs / 1000), fontSize = 14.sp)
-            }
-        }
+        PositionBar(viewModel, track)
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -198,6 +170,43 @@ fun NowPlayingScreen(viewModel: MonoMusicViewModel) {
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+/**
+ * Slider plus time labels, polling the position itself. Keeping the poll in
+ * this small composable confines the once-a-second recomposition to the
+ * slider strip instead of the whole screen (a full-screen e-ink refresh).
+ */
+@Composable
+private fun PositionBar(viewModel: MonoMusicViewModel, track: TidalTrack) {
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var dragPositionMs by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(viewModel.isPlaying, track.id) {
+        while (true) {
+            if (dragPositionMs == null) positionMs = viewModel.currentPositionMs()
+            delay(1000)
+        }
+    }
+
+    val durationMs = viewModel.durationMs.takeIf { it > 0 }
+        ?: (track.durationSec * 1000L).takeIf { it > 0 }
+        ?: return
+    SliderMMD(
+        value = (dragPositionMs ?: positionMs).toFloat().coerceIn(0f, durationMs.toFloat()),
+        onValueChange = { dragPositionMs = it.toLong() },
+        onValueChangeFinished = {
+            dragPositionMs?.let { viewModel.seekTo(it) }
+            dragPositionMs = null
+        },
+        valueRange = 0f..durationMs.toFloat(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(modifier = Modifier.fillMaxWidth()) {
+        TextMMD(text = formatDuration((dragPositionMs ?: positionMs) / 1000), fontSize = 14.sp)
+        Spacer(modifier = Modifier.weight(1f))
+        TextMMD(text = formatDuration(durationMs / 1000), fontSize = 14.sp)
     }
 }
 

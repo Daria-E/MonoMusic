@@ -42,11 +42,11 @@ fun ArtistDetailsScreen(
     val albumsState = viewModel.artistAlbums
     val topTracks = topTracksState.data.orEmpty()
     val albums = albumsState.data.orEmpty()
+    val libraryTracks = viewModel.libraryTracks.filter { it.artistId == artist.id }
     var pickerTrack by remember { mutableStateOf<TidalTrack?>(null) }
-    var downloadTrack by remember { mutableStateOf<TidalTrack?>(null) }
     val isFavorite = artist.id in viewModel.favoriteArtistIds
 
-    if (topTracksState.isLoading && albumsState.isLoading) {
+    if (libraryTracks.isEmpty() && topTracksState.isLoading && albumsState.isLoading) {
         CenteredMessage("Loading artist…")
         return
     }
@@ -88,6 +88,40 @@ fun ArtistDetailsScreen(
             }
         }
 
+        if (libraryTracks.isNotEmpty()) {
+            item {
+                TextMMD(
+                    text = "In Your Library",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+            itemsIndexed(libraryTracks, key = { _, track -> "lib-${track.id}" }) { index, track ->
+                val isTrackFavorite = track.id in viewModel.favoriteTrackIds
+                val trackPinned = viewModel.isPinned("track", track.id.toString())
+                TrackRow(
+                    track = track,
+                    isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
+                    isDownloaded = track.id in viewModel.offlineTrackIds,
+                    onClick = { viewModel.playTracks(libraryTracks, index) },
+                    menuEntries = remember(track, isTrackFavorite, trackPinned) {
+                        listOf(
+                            RowMenuEntry(
+                                if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
+                            ) { viewModel.toggleFavoriteTrack(track) },
+                            RowMenuEntry("Add to playlist") { pickerTrack = track },
+                            keepOfflineMenuEntry(viewModel, track),
+                        )
+                    },
+                    showDivider = index != libraryTracks.lastIndex,
+                )
+            }
+            if (topTracks.isNotEmpty()) {
+                item { Spacer(modifier = Modifier.height(24.dp)) }
+            }
+        }
+
         if (topTracks.isNotEmpty()) {
             item {
                 TextMMD(
@@ -99,17 +133,20 @@ fun ArtistDetailsScreen(
             }
             itemsIndexed(topTracks, key = { _, track -> "top-${track.id}" }) { index, track ->
                 val isTrackFavorite = track.id in viewModel.favoriteTrackIds
+                val trackPinned = viewModel.isPinned("track", track.id.toString())
                 TrackRow(
                     track = track,
                     isCurrentlyPlaying = track.id == viewModel.currentTrack?.id,
                     onClick = { viewModel.playTracks(topTracks, index) },
-                    menuEntries = listOf(
-                        RowMenuEntry(
-                            if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
-                        ) { viewModel.toggleFavoriteTrack(track) },
-                        RowMenuEntry("Add to playlist") { pickerTrack = track },
-                        keepOfflineMenuEntry(viewModel, track) { downloadTrack = it },
-                    ),
+                    menuEntries = remember(track, isTrackFavorite, trackPinned) {
+                        listOf(
+                            RowMenuEntry(
+                                if (isTrackFavorite) "Remove from favorites" else "Add to favorites"
+                            ) { viewModel.toggleFavoriteTrack(track) },
+                            RowMenuEntry("Add to playlist") { pickerTrack = track },
+                            keepOfflineMenuEntry(viewModel, track),
+                        )
+                    },
                     showDivider = index != topTracks.lastIndex,
                 )
             }
@@ -138,12 +175,6 @@ fun ArtistDetailsScreen(
             item { TextMMD(text = albumsState.error, fontSize = 14.sp) }
         }
     }
-
-    TrackDownloadDialog(
-        track = downloadTrack,
-        viewModel = viewModel,
-        onDismiss = { downloadTrack = null },
-    )
 
     pickerTrack?.let { track ->
         PlaylistPickerDialog(
