@@ -12,8 +12,8 @@ android {
         applicationId = "com.monoapps.monomusic"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20
-        versionName = "3.0.0-beta.1"
+        versionCode = 21
+        versionName = "3.0.0-beta.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
