@@ -17,6 +17,7 @@ import androidx.media3.session.SessionToken
 import com.monoapps.monomusic.offline.OfflineCollection
 import com.monoapps.monomusic.offline.OfflineManager
 import com.monoapps.monomusic.tidal.AudioQuality
+import com.monoapps.monomusic.tidal.TidalApiException
 import com.monoapps.monomusic.tidal.TidalAuthException
 import com.monoapps.monomusic.tidal.TidalAlbum
 import com.monoapps.monomusic.tidal.TidalArtist
@@ -291,7 +292,13 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            uiMessage = "Playback failed: ${error.cause?.message ?: error.message}"
+            uiMessage = if (generateSequence<Throwable>(error) { it.cause }
+                    .any { (it as? TidalApiException)?.httpCode == 429 }
+            ) {
+                "Tidal is rate limiting this device; playback should recover in a few minutes"
+            } else {
+                "Playback failed: ${error.cause?.message ?: error.message}"
+            }
         }
     }
 

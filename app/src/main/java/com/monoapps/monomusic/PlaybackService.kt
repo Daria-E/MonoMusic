@@ -10,6 +10,7 @@ import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -62,6 +63,20 @@ class PlaybackService : MediaSessionService() {
         player.setAudioAttributes(audioAttributes, true)
         player.setHandleAudioBecomingNoisy(true)
 
+        // Tell the download worker when playback streams from the network,
+        // so it stays off Tidal's rate limiter and the wifi; playing a
+        // downloaded file does not pause downloads.
+        val app = application as MonoMusic
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) = update()
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = update()
+            private fun update() {
+                val trackId = player.currentMediaItem?.mediaId?.toLongOrNull()
+                app.streamingActive.value = player.isPlaying &&
+                    (trackId == null || app.offlineManager.fileFor(trackId) == null)
+            }
+        })
+
         val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -76,7 +91,6 @@ class PlaybackService : MediaSessionService() {
         // tidal:// URI from the media id when items arrive. The cache key
         // includes the quality setting so a quality change doesn't replay
         // old cached audio under the new label.
-        val app = application as MonoMusic
         val callback = object : MediaSession.Callback {
             override fun onAddMediaItems(
                 mediaSession: MediaSession,

@@ -21,8 +21,16 @@ class MonoMusic : Application() {
     val tidalSession: TidalSession by lazy { TidalSession(this) }
     val tidalAuth: TidalAuth by lazy { TidalAuth(tidalSession, httpClient) }
     val tidalClient: TidalClient by lazy { TidalClient(tidalSession, tidalAuth, httpClient) }
+    /**
+     * True while the player is audibly streaming from the network (not a
+     * downloaded file). The download worker yields on it: stream resolution
+     * and downloading compete with playback for Tidal's rate limiter and
+     * the wifi link.
+     */
+    val streamingActive = MutableStateFlow(false)
+
     val offlineManager: OfflineManager by lazy {
-        OfflineManager(this, tidalClient, tidalSession, httpClient)
+        OfflineManager(this, tidalClient, tidalSession, httpClient, streamingActive)
     }
     val libraryCache: LibraryCache by lazy { LibraryCache(this) }
 

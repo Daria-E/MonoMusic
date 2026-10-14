@@ -261,7 +261,7 @@ class TidalClient(
     }
 
     private suspend fun streamInfoAt(trackId: Long, quality: AudioQuality): TidalStreamInfo {
-        val json = request {
+        val json = request(rateLimitWaitCapSec = 30) {
             get(
                 url(
                     API_V1 + "tracks/$trackId/playbackinfopostpaywall",
@@ -298,13 +298,18 @@ class TidalClient(
 
     /**
      * Executes a request with auth headers; refreshes the access token
-     * proactively near expiry and reactively on 401, and honours one
-     * Retry-After on 429. The builder is re-invoked per attempt so retries
-     * pick up a refreshed token.
+     * proactively near expiry and reactively on 401, and honours up to two
+     * Retry-After waits on 429. The builder is re-invoked per attempt so
+     * retries pick up a refreshed token.
      */
     // The whole exchange runs on IO: callers sit on the main dispatcher, and
     // reading a response body is a blocking socket read, not just parsing.
-    private suspend fun request(build: () -> Request.Builder): okhttp3.Response =
+    private suspend fun request(
+        // Streaming passes a higher cap: buffering through a lingering
+        // penalty window beats failing playback; UI taps stay snappy.
+        rateLimitWaitCapSec: Long = 15,
+        build: () -> Request.Builder,
+    ): okhttp3.Response =
         withContext(Dispatchers.IO) {
             if (System.currentTimeMillis() >= session.expiresAtMillis - 60_000) {
                 auth.refreshAccessToken()
@@ -315,11 +320,13 @@ class TidalClient(
                 auth.refreshAccessToken(force = true)
                 response = execute(build)
             }
-            if (response.code == 429) {
+            var rateLimitRetries = 0
+            while (response.code == 429 && rateLimitRetries < 2) {
                 val waitSec = response.header("Retry-After")?.toLongOrNull() ?: 2L
                 response.close()
-                delay(waitSec.coerceAtMost(15) * 1000)
+                delay(waitSec.coerceAtMost(rateLimitWaitCapSec) * 1000)
                 response = execute(build)
+                rateLimitRetries++
             }
             if (!response.isSuccessful) {
                 val code = response.code

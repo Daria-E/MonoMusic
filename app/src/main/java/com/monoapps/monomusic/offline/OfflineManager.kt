@@ -14,6 +14,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
@@ -45,6 +47,7 @@ class OfflineManager(
     private val client: TidalClient,
     private val session: TidalSession,
     private val http: OkHttpClient,
+    private val streamingActive: StateFlow<Boolean>,
 ) {
     companion object {
         /** Free space to keep on the download volume; the worker pauses below it. */
@@ -175,10 +178,32 @@ class OfflineManager(
     }
 
     private suspend fun downloadLoop() {
+        while (true) {
+            downloadPass()
+            if (storageLow.value) return // unpinning/freeing space restarts us
+            val missing = mutex.withLock {
+                collections.value.flatMap { it.tracks }.any { fileFor(it.id) == null }
+            }
+            if (!missing) return
+            // Songs that failed this pass (flaky network, lingering rate
+            // limit) retry on their own instead of waiting for the next
+            // app start, which on this phone can be days away.
+            delay(30 * 60_000L)
+        }
+    }
+
+    private suspend fun downloadPass() {
         failedThisRun.clear()
         storageLow.value = false
         var backoffSec = 5L
+        // Grow-only gap between downloads, doubled on every 429. The worker
+        // settles at a pace Tidal tolerates instead of repeatedly exhausting
+        // the limiter, which would block streaming long after downloads stop.
+        var spacingSec = 0L
         while (true) {
+            // Yield to live streaming: resolving and downloading here would
+            // compete with playback for Tidal's rate limiter and the wifi.
+            streamingActive.first { !it }
             val next = mutex.withLock {
                 collections.value
                     .flatMap { c -> c.tracks.map { it to c.quality } }
@@ -196,12 +221,14 @@ class OfflineManager(
             try {
                 download(track, quality)
                 backoffSec = 5L
+                if (spacingSec > 0) delay(spacingSec * 1000)
             } catch (e: TidalApiException) {
                 if (e.httpCode == 429) {
                     // Rate limited (large playlists trip this). Wait it out
                     // and retry the same track; failing it would cascade the
                     // whole remaining queue into doomed, limiter-feeding
                     // requests.
+                    spacingSec = (spacingSec * 2).coerceIn(5L, 120L)
                     delay(backoffSec * 1000)
                     backoffSec = (backoffSec * 2).coerceAtMost(300)
                 } else {
