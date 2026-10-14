@@ -862,7 +862,7 @@ class MonoMusicViewModel(application: Application) : AndroidViewModel(applicatio
             artistId = null,
             albumTitle = metadata.albumTitle?.toString(),
             albumId = null,
-            durationSec = 0,
+            durationSec = ((metadata.durationMs ?: 0L) / 1000).toInt(),
             trackNumber = 0,
             volumeNumber = 1,
             explicit = false,
@@ -885,6 +885,9 @@ fun TidalTrack.toMediaItem(): MediaItem =
                 .setTitle(title)
                 .setArtist(artistName)
                 .setAlbumTitle(albumTitle)
+                // Cars read track length from session metadata over AVRCP;
+                // without it many head units hide the progress bar.
+                .setDurationMs(durationSec.takeIf { it > 0 }?.times(1000L))
                 .build()
         )
         .build()

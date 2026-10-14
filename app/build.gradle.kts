@@ -78,9 +78,9 @@ dependencies {
     implementation("com.mudita:MMD:1.0.0")
 
     // Media3 (ExoPlayer) for streaming playback
-    implementation("androidx.media3:media3-exoplayer:1.3.1")
-    implementation("androidx.media3:media3-session:1.3.1")
-    implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
+    implementation("androidx.media3:media3-exoplayer:1.9.4")
+    implementation("androidx.media3:media3-session:1.9.4")
+    implementation("androidx.media3:media3-datasource-okhttp:1.9.4")
 
     testImplementation("junit:junit:4.13.2")
     // Real org.json for JVM unit tests (the Android SDK one is a stub there)
